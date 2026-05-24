@@ -1,11 +1,11 @@
 #include "auth/auth_manager.h"
+#include "common/os/file.h"
+#include "common/os/fs.h"
 #include <sstream>
 #include <iomanip>
 #include <random>
 #include <cstring>
 #include <chrono>
-#include <fstream>
-#include <filesystem>
 
 namespace minitsdb {
 
@@ -128,11 +128,12 @@ const uint32_t SHA256::K[64] = {
 // AuthManager implementation
 // ============================================================
 AuthManager::AuthManager() {
-    // 创建默认管理员
+    // 创建默认管理员（带随机 salt）
     User admin;
     admin.name = "admin";
     admin.role = UserRole::ADMIN;
-    admin.password_hash = HashPassword("admin123");
+    admin.salt = GenerateSalt();
+    admin.password_hash = HashPassword("admin123", admin.salt);
     admin.created_at = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     users_["admin"] = admin;
@@ -152,7 +153,7 @@ std::string AuthManager::Login(const std::string& username,
     auto it = users_.find(username);
     if (it == users_.end() || !it->second.active) return "";
 
-    if (it->second.password_hash != HashPassword(password)) return "";
+    if (it->second.password_hash != HashPassword(password, it->second.salt)) return "";
 
     CleanupExpiredTokens();
 
@@ -200,7 +201,8 @@ bool AuthManager::CreateUser(const std::string& requester_token,
     User user;
     user.name = username;
     user.role = role;
-    user.password_hash = HashPassword(password);
+    user.salt = GenerateSalt();
+    user.password_hash = HashPassword(password, user.salt);
     user.created_at = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -241,29 +243,37 @@ std::vector<User> AuthManager::GetUsers(const std::string& requester_token) {
 
 bool AuthManager::Save() {
     try {
-        std::filesystem::create_directories(data_path_ + "/meta");
+        os::fs::CreateDirectories(data_path_ + "/meta");
         std::string filepath = data_path_ + "/meta/users.db";
 
-        std::ofstream file(filepath, std::ios::binary);
-        if (!file.is_open()) return false;
+        os::File file;
+        if (!file.Open(filepath, os::FileMode::WRITE)) return false;
+
+        // 格式标记和版本
+        file.Write("USRDB", 5);
+        uint8_t version = 2;  // v2: 带 salt
+        file.Write(&version, sizeof(version));
 
         uint32_t count = static_cast<uint32_t>(users_.size());
-        file.write(reinterpret_cast<const char*>(&count), sizeof(count));
+        file.Write(&count, sizeof(count));
 
         for (const auto& [name, user] : users_) {
             uint16_t name_len = static_cast<uint16_t>(name.size());
-            file.write(reinterpret_cast<const char*>(&name_len), sizeof(name_len));
-            file.write(name.data(), name_len);
+            file.Write(&name_len, sizeof(name_len));
+            file.Write(name.data(), name_len);
 
             uint16_t hash_len = static_cast<uint16_t>(user.password_hash.size());
-            file.write(reinterpret_cast<const char*>(&hash_len), sizeof(hash_len));
-            file.write(user.password_hash.data(), hash_len);
+            file.Write(&hash_len, sizeof(hash_len));
+            file.Write(user.password_hash.data(), hash_len);
+
+            // salt: 固定 32 字符 hex
+            file.Write(user.salt.data(), 32);
 
             uint8_t role = static_cast<uint8_t>(user.role);
-            file.write(reinterpret_cast<const char*>(&role), sizeof(role));
-            file.write(reinterpret_cast<const char*>(&user.created_at), sizeof(Timestamp));
+            file.Write(&role, sizeof(role));
+            file.Write(&user.created_at, sizeof(Timestamp));
             uint8_t active = user.active ? 1 : 0;
-            file.write(reinterpret_cast<const char*>(&active), sizeof(active));
+            file.Write(&active, sizeof(active));
         }
 
         return true;
@@ -275,37 +285,62 @@ bool AuthManager::Save() {
 bool AuthManager::Load() {
     try {
         std::string filepath = data_path_ + "/meta/users.db";
-        std::ifstream file(filepath, std::ios::binary);
-        if (!file.is_open()) return false;
+        os::File file;
+        if (!file.Open(filepath, os::FileMode::READ)) return false;
 
         uint32_t count;
-        file.read(reinterpret_cast<char*>(&count), sizeof(count));
-        if (count > 1000) return false;  // 防损坏
+        bool has_salt = false;
+
+        // 检测格式标记
+        char magic[5] = {0};
+        size_t br = 0;
+        file.Read(magic, 5, &br);
+        if (br == 5 && std::strncmp(magic, "USRDB", 5) == 0) {
+            // 新格式：有版本号和标记
+            uint8_t version;
+            file.Read(&version, sizeof(version), &br);
+            file.Read(&count, sizeof(count), &br);
+            if (count > 1000) return false;
+            has_salt = (version >= 2);
+        } else {
+            // 旧格式：无标记，前 4 字节是 count
+            // 重置到文件开头读取 count
+            file.Seek(0, SEEK_SET);
+            file.Read(&count, sizeof(count), &br);
+            if (count > 1000) return false;
+        }
 
         users_.clear();
         for (uint32_t i = 0; i < count; i++) {
             User user;
 
             uint16_t name_len;
-            file.read(reinterpret_cast<char*>(&name_len), sizeof(name_len));
+            file.Read(&name_len, sizeof(name_len), &br);
             std::vector<char> name_buf(name_len);
-            file.read(name_buf.data(), name_len);
+            file.Read(name_buf.data(), name_len, &br);
             user.name = std::string(name_buf.data(), name_len);
 
             uint16_t hash_len;
-            file.read(reinterpret_cast<char*>(&hash_len), sizeof(hash_len));
+            file.Read(&hash_len, sizeof(hash_len), &br);
             std::vector<char> hash_buf(hash_len);
-            file.read(hash_buf.data(), hash_len);
+            file.Read(hash_buf.data(), hash_len, &br);
             user.password_hash = std::string(hash_buf.data(), hash_len);
 
+            // salt（旧格式无 salt 时留空，后续 Login 会跳过）
+            if (has_salt) {
+                std::vector<char> salt_buf(32);
+                file.Read(salt_buf.data(), 32, &br);
+                user.salt = std::string(salt_buf.data(), 32);
+            }
+
             uint8_t role;
-            file.read(reinterpret_cast<char*>(&role), sizeof(role));
+            file.Read(&role, sizeof(role), &br);
             user.role = static_cast<UserRole>(role);
 
-            file.read(reinterpret_cast<char*>(&user.created_at), sizeof(Timestamp));
+            file.Read(&user.created_at, sizeof(Timestamp), &br);
 
             uint8_t active;
-            file.read(reinterpret_cast<char*>(&active), sizeof(active));
+            file.Read(&active, sizeof(active), &br);
             user.active = (active != 0);
 
             users_[user.name] = user;
@@ -316,10 +351,25 @@ bool AuthManager::Load() {
     }
 }
 
-std::string AuthManager::HashPassword(const std::string& password) {
+std::string AuthManager::HashPassword(const std::string& password, const std::string& salt) {
     SHA256 sha;
+    sha.Update(salt);
     sha.Update(password);
     return sha.Digest();
+}
+
+std::string AuthManager::GenerateSalt() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    static std::uniform_int_distribution<uint64_t> dis;
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    // 16 字节 = 32 个 hex 字符
+    for (int i = 0; i < 4; i++) {
+        oss << std::setw(16) << dis(gen);
+    }
+    return oss.str().substr(0, 32);
 }
 
 std::string AuthManager::GenerateToken() {

@@ -3,7 +3,7 @@
 namespace minitsdb {
 
 void LatestCache::Update(const std::string& tag, const DataPoint& point) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     auto it = cache_.find(tag);
     if (it != cache_.end()) {
         if (point.ts >= it->second.ts) {
@@ -15,7 +15,7 @@ void LatestCache::Update(const std::string& tag, const DataPoint& point) {
 }
 
 bool LatestCache::Get(const std::string& tag, DataPoint& out) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     auto it = cache_.find(tag);
     if (it != cache_.end()) {
         out = it->second;
@@ -26,7 +26,7 @@ bool LatestCache::Get(const std::string& tag, DataPoint& out) {
 
 std::vector<std::pair<std::string, DataPoint>> LatestCache::GetByPattern(
     const std::string& pattern) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     std::vector<std::pair<std::string, DataPoint>> result;
     for (const auto& [tag, point] : cache_) {
         if (MatchPattern(tag, pattern)) {
@@ -37,7 +37,7 @@ std::vector<std::pair<std::string, DataPoint>> LatestCache::GetByPattern(
 }
 
 std::vector<std::pair<std::string, DataPoint>> LatestCache::GetAll() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     std::vector<std::pair<std::string, DataPoint>> result;
     result.reserve(cache_.size());
     for (const auto& pair : cache_) {
@@ -47,17 +47,17 @@ std::vector<std::pair<std::string, DataPoint>> LatestCache::GetAll() {
 }
 
 void LatestCache::Remove(const std::string& tag) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     cache_.erase(tag);
 }
 
 void LatestCache::Clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     cache_.clear();
 }
 
 size_t LatestCache::Size() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     return cache_.size();
 }
 

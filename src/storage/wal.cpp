@@ -46,20 +46,17 @@ WalWriter::~WalWriter() {
 }
 
 bool WalWriter::Open() {
-    file_.open(path_, std::ios::binary | std::ios::app);
-    if (!file_.is_open()) return false;
+    if (!file_.Open(path_, os::FileMode::APPEND)) return false;
 
     // 获取当前文件大小
-    file_.seekp(0, std::ios::end);
-    size_ = static_cast<size_t>(file_.tellp());
+    size_ = static_cast<size_t>(file_.Size());
     opened_ = true;
     return true;
 }
 
 bool WalWriter::WriteRaw(const void* data, size_t len) {
     if (!opened_) return false;
-    file_.write(static_cast<const char*>(data), len);
-    if (!file_.good()) return false;
+    if (!file_.Write(data, len)) return false;
     size_ += len;
     return true;
 }
@@ -119,13 +116,12 @@ bool WalWriter::WriteCheckpoint() {
 
 bool WalWriter::Flush() {
     if (!opened_) return false;
-    file_.flush();
-    return file_.good();
+    return file_.Flush();  // OS-level flush: FlushFileBuffers / fsync
 }
 
 void WalWriter::Close() {
     if (opened_) {
-        file_.close();
+        file_.Close();
         opened_ = false;
     }
 }
@@ -144,25 +140,26 @@ uint32_t WalWriter::CalculateCrc(const void* data, size_t len) {
 WalReader::WalReader(const std::string& path) : path_(path) {}
 
 bool WalReader::Open() {
-    std::ifstream file(path_, std::ios::binary);
-    if (!file.is_open()) return false;
+    os::File file;
+    if (!file.Open(path_, os::FileMode::READ)) return false;
 
     entries_.clear();
-    while (file.peek() != EOF && file.good()) {
+    int64_t file_size = file.Size();
+    while (file.Tell() < file_size) {
         if (!ReadEntry(file)) {
             // 遇到损坏条目，停止读取
             break;
         }
     }
 
-    file.close();
     return true;
 }
 
-bool WalReader::ReadEntry(std::ifstream& file) {
+bool WalReader::ReadEntry(os::File& file) {
     WalEntryHeader header;
-    file.read(reinterpret_cast<char*>(&header), sizeof(header));
-    if (file.gcount() != sizeof(header)) return false;
+    size_t bytes_read = 0;
+    if (!file.Read(&header, sizeof(header), &bytes_read) ||
+        bytes_read != sizeof(header)) return false;
 
     if (header.type == WalEntryType::CHECKPOINT) {
         Entry entry;
@@ -175,8 +172,9 @@ bool WalReader::ReadEntry(std::ifstream& file) {
 
     // 读取数据
     std::vector<uint8_t> data(header.data_len);
-    file.read(reinterpret_cast<char*>(data.data()), header.data_len);
-    if (file.gcount() != static_cast<std::streamsize>(header.data_len)) return false;
+    size_t data_read = 0;
+    if (!file.Read(data.data(), header.data_len, &data_read) ||
+        data_read != header.data_len) return false;
 
     // 校验 CRC
     uint32_t expected_crc = CalculateCrc32(data.data(), data.size());
@@ -213,12 +211,8 @@ void WalReader::Close() {
 }
 
 bool WalReader::Truncate(const std::string& path) {
-    // 删除 WAL 文件
-    if (std::remove(path.c_str()) != 0) {
-        // 文件不存在也算成功
-        return true;
-    }
-    return true;
+    os::fs::Remove(path);
+    return true;  // 文件不存在也算成功
 }
 
 }  // namespace minitsdb

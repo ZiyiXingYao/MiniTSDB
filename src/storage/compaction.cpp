@@ -1,11 +1,9 @@
 #include "storage/compaction.h"
 #include "storage/sstable.h"
 #include "common/logger.h"
-#include <filesystem>
+#include "common/os/fs.h"
 #include <algorithm>
 #include <set>
-
-namespace fs = std::filesystem;
 
 namespace minitsdb {
 
@@ -36,12 +34,14 @@ void Compaction::WorkerLoop(int32_t interval_sec) {
 void Compaction::RunOnce(size_t threshold_bytes) {
     try {
         std::string tags_path = hot_path_ + "/tags";
-        if (!fs::exists(tags_path)) return;
+        if (!os::fs::Exists(tags_path)) return;
 
-        for (const auto& tag_dir : fs::directory_iterator(tags_path)) {
-            if (!tag_dir.is_directory()) continue;
-            CompactTag(tag_dir.path().filename().string(),
-                       tag_dir.path().string(), threshold_bytes);
+        std::vector<os::fs::DirEntry> entries;
+        if (os::fs::ListDirectory(tags_path, entries)) {
+            for (const auto& tag_dir : entries) {
+                if (!tag_dir.is_directory) continue;
+                CompactTag(tag_dir.name, tag_dir.path, threshold_bytes);
+            }
         }
     } catch (const std::exception& e) {
         LOG_WARN("Compaction::RunOnce error: {}", e.what());
@@ -52,15 +52,19 @@ void Compaction::CompactTag(const std::string& tag_name,
                              const std::string& tag_dir,
                              size_t threshold_bytes) {
     // 收集需要合并的小文件
-    std::vector<fs::path> small_files;
+    std::vector<std::string> small_files;
     size_t total_size = 0;
 
-    for (const auto& entry : fs::directory_iterator(tag_dir)) {
-        if (entry.path().extension() != ".sst") continue;
-        size_t file_size = static_cast<size_t>(entry.file_size());
-        if (file_size < threshold_bytes) {
-            small_files.push_back(entry.path());
-            total_size += file_size;
+    std::vector<os::fs::DirEntry> sst_entries;
+    if (os::fs::ListDirectory(tag_dir, sst_entries)) {
+        for (const auto& entry : sst_entries) {
+            if (entry.name.size() < 4 ||
+                entry.name.substr(entry.name.size() - 4) != ".sst") continue;
+            size_t file_size = static_cast<size_t>(entry.file_size);
+            if (file_size < threshold_bytes) {
+                small_files.push_back(entry.path);
+                total_size += file_size;
+            }
         }
     }
 
@@ -72,7 +76,7 @@ void Compaction::CompactTag(const std::string& tag_name,
     // 读取所有小文件的数据
     std::vector<DataPoint> all_points;
     for (const auto& f : small_files) {
-        SSTableReader reader(f.string());
+        SSTableReader reader(f);
         if (!reader.Open()) continue;
 
         TimeRange full_range;
@@ -115,17 +119,15 @@ void Compaction::CompactTag(const std::string& tag_name,
     writer.Close();
 
     // 原子重命名
-    std::error_code ec;
-    fs::rename(tmp_file, merged_file, ec);
-    if (ec) {
-        fs::remove(tmp_file, ec);
-        LOG_WARN("Compaction rename failed: {}", ec.message());
+    if (!os::fs::Rename(tmp_file, merged_file)) {
+        os::fs::Remove(tmp_file);
+        LOG_WARN("Compaction rename failed");
         return;
     }
 
     // 删除旧的小文件
     for (const auto& f : small_files) {
-        fs::remove(f);
+        os::fs::Remove(f);
     }
 
     LOG_INFO("Compacted {} files into {} ({} points)",

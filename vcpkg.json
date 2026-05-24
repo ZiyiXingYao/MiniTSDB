@@ -4,6 +4,7 @@
     "dependencies": [
         "gtest",
         "grpc",
-        "protobuf"
+        "protobuf",
+        "zlib"
     ]
 }

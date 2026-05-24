@@ -18,7 +18,8 @@ enum class UserRole : uint8_t {
 // 用户数据
 struct User {
     std::string name;
-    std::string password_hash;  // SHA-256 十六进制
+    std::string password_hash;  // SHA-256(salt + password) 十六进制
+    std::string salt;           // 随机 salt（16 字节 hex 编码 = 32 字符）
     UserRole role = UserRole::VIEWER;
     Timestamp created_at = 0;
     bool active = true;
@@ -68,14 +69,17 @@ public:
     // Token 有效期（秒）
     void SetTokenExpiry(int64_t seconds) { token_expiry_sec_ = seconds; }
 
+    // 生成随机 salt（32 字符 hex）
+    static std::string GenerateSalt();
+
 private:
     std::string data_path_;
     std::unordered_map<std::string, User> users_;
     std::unordered_map<std::string, SessionToken> tokens_;
     int64_t token_expiry_sec_ = 28800;  // 默认 8 小时
 
-    // 计算 SHA-256
-    static std::string HashPassword(const std::string& password);
+    // 计算 SHA-256(salt + password)
+    static std::string HashPassword(const std::string& password, const std::string& salt);
 
     // 生成随机 Token
     static std::string GenerateToken();

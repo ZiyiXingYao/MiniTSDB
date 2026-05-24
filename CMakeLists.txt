@@ -117,12 +117,14 @@ target_include_directories(minitsdb_core PUBLIC
     ${CMAKE_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_BINARY_DIR}
     "D:/Code/vcpkg/installed/x64-windows/include"
+    "D:/Code/vcpkg/packages/zlib_x64-windows/include"
 )
 
 target_compile_options(minitsdb_core PRIVATE ${COMMON_FLAGS})
 
 target_link_libraries(minitsdb_core PUBLIC
     Threads::Threads
+    "D:/Code/vcpkg/packages/zlib_x64-windows/lib/zlib.lib"
 )
 
 # ---------- Protobuf 代码生成 ----------
@@ -216,6 +218,7 @@ if(GTest_FOUND)
     endfunction()
 
     add_minitsdb_gtest(test_compressor tests/test_compressor.cpp)
+    add_minitsdb_gtest(test_os_file tests/test_os_file.cpp)
     add_minitsdb_gtest(test_wal tests/test_wal.cpp)
     add_minitsdb_gtest(test_sql_parser tests/test_sql_parser.cpp)
     add_minitsdb_gtest(test_alarm tests/test_alarm.cpp)
@@ -225,6 +228,7 @@ if(GTest_FOUND)
     add_minitsdb_gtest(test_memtable tests/test_memtable.cpp)
     add_minitsdb_gtest(test_cache tests/test_cache.cpp)
     add_minitsdb_gtest(test_config tests/test_config.cpp)
+    set_tests_properties(test_config PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     add_minitsdb_gtest(test_executor tests/test_executor.cpp)
     add_minitsdb_gtest(test_sdk tests/test_sdk.cpp)
     target_compile_definitions(test_sdk PRIVATE MINITSDB_SDK_BUILD)
@@ -238,6 +242,7 @@ else()
     endfunction()
 
     add_minitsdb_test(test_compressor tests/test_compressor.cpp)
+    add_minitsdb_test(test_os_file tests/test_os_file.cpp)
     add_minitsdb_test(test_wal tests/test_wal.cpp)
     add_minitsdb_test(test_sql_parser tests/test_sql_parser.cpp)
 endif()

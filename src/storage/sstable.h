@@ -2,16 +2,17 @@
 
 #include "common/types.h"
 #include "storage/compressor.h"
+#include "common/os/file.h"
 #include <string>
 #include <vector>
-#include <fstream>
+#include <cstdint>
 #include <ctime>
 
 namespace minitsdb {
 
-// SSTable 文件格式:
+// SSTable 文件格式 (v2, CRC enabled):
 // [Magic: 8 bytes] "MINITSDB"
-// [Version: 4 bytes] uint32
+// [Version: 4 bytes] uint32 (2 = CRC enabled)
 // [Tag name len: 2 bytes] uint16
 // [Tag name: N bytes]
 // [Block count: 4 bytes] uint32
@@ -25,6 +26,10 @@ namespace minitsdb {
 // [CRC32: 4 bytes] 文件尾校验
 
 constexpr uint64_t SSTABLE_MAGIC = 0x4D494E4954534442;  // "MINITSDB"
+constexpr uint32_t SSTABLE_VERSION_CRC = 2;               // 带 CRC 校验的版本
+
+// 计算 CRC-32（标准多项式 0xEDB88320）
+uint32_t Crc32(const uint8_t* data, size_t len);
 
 // SSTable 单块的描述信息（内存索引）
 struct BlockIndex {
@@ -47,8 +52,9 @@ public:
 
 private:
     std::string filepath_;
-    std::ofstream file_;
+    os::File file_;
     size_t file_size_ = 0;
+    size_t data_end_ = 0;    // 实际数据尾部（不含 CRC）
     size_t block_count_ = 0;
     std::vector<size_t> block_offsets_;
     bool opened_ = false;
@@ -80,7 +86,7 @@ public:
 
 private:
     std::string filepath_;
-    std::ifstream file_;
+    os::File file_;
     std::string tag_name_;
     TimeRange range_;
     uint32_t block_count_ = 0;

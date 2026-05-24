@@ -3,7 +3,7 @@
 #include "common/types.h"
 #include <string>
 #include <unordered_map>
-#include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 namespace minitsdb {
@@ -39,7 +39,7 @@ public:
     size_t Size() const;
 
 private:
-    mutable std::mutex mutex_;
+    mutable std::shared_mutex mutex_;
     std::unordered_map<std::string, DataPoint> cache_;
 
     bool MatchPattern(const std::string& tag, const std::string& pattern);

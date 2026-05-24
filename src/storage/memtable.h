@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <functional>
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 
 namespace minitsdb {
 
@@ -57,7 +57,7 @@ private:
     size_t flush_threshold_;
     FlushCallback flush_cb_;
     std::unordered_map<std::string, TagBuffer> buffers_;
-    mutable std::mutex mutex_;
+    mutable std::shared_mutex mutex_;
 
     void CheckFlush(const std::string& tag, TagBuffer& buf);
     void FlushBuffer(const std::string& tag, TagBuffer& buf);

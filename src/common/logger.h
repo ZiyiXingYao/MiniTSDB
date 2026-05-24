@@ -10,18 +10,17 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/base_sink.h>
+#include "common/os/file.h"
+#include "common/os/fs.h"
 #include <memory>
 #include <string>
-#include <fstream>
 #include <mutex>
 #include <chrono>
 #include <cstdlib>
 #include <algorithm>
-#include <filesystem>
+#include <zlib.h>
 
 namespace minitsdb {
-
-namespace fs = std::filesystem;
 
 // 自定义滚动文件 sink：容量到达上限后，按截止时间重命名 + gzip 压缩
 class TimestampRotatingFileSink : public spdlog::sinks::base_sink<std::mutex> {
@@ -35,15 +34,16 @@ public:
         , max_files_(max_files)
         , compress_(compress) {
         // 创建日志目录
-        auto dir = fs::path(base_filename).parent_path();
-        if (!dir.empty()) fs::create_directories(dir);
+        auto pos = std::string(base_filename).find_last_of("/\\");
+        if (pos != std::string::npos) {
+            os::fs::CreateDirectories(std::string(base_filename).substr(0, pos));
+        }
 
         // 打开当前日志文件（追加模式）
-        file_.open(base_filename, std::ios::binary | std::ios::app);
-        if (!file_.is_open()) {
+        if (!file_.Open(base_filename, os::FileMode::APPEND)) {
             throw spdlog::spdlog_ex("Failed to open log file: " + base_filename);
         }
-        current_size_ = static_cast<size_t>(file_.tellp());
+        current_size_ = static_cast<size_t>(file_.Size());
     }
 
 protected:
@@ -54,8 +54,8 @@ protected:
         // 写入文件
         std::lock_guard<std::mutex> lock(mutex_);
         current_size_ += formatted.size();
-        file_.write(formatted.data(), formatted.size());
-        file_.flush();
+        file_.Write(formatted.data(), formatted.size());
+        file_.Flush();
 
         // 检查是否需要滚动
         if (current_size_ >= max_size_) {
@@ -65,7 +65,7 @@ protected:
 
     void flush_() override {
         std::lock_guard<std::mutex> lock(mutex_);
-        file_.flush();
+        file_.Flush();
     }
 
 private:
@@ -73,7 +73,7 @@ private:
     size_t max_size_;
     size_t max_files_;
     bool compress_;
-    std::ofstream file_;
+    os::File file_;
     size_t current_size_ = 0;
     std::mutex mutex_;
 
@@ -86,26 +86,37 @@ private:
     }
 
     void Rotate() {
-        file_.close();
+        file_.Close();
 
         // 生成时间戳文件名：minitsdb.log.20260524154908990
         std::string ts = GetTimestampStr();
         std::string archived_name = base_filename_ + "." + ts;
-        fs::path archived(archived_name);
 
         // 重命名当前日志为带时间戳的文件
-        fs::rename(base_filename_, archived);
-        SPDLOG_DEBUG("Log rotated: {} -> {}", base_filename_, archived.filename().string());
+        os::fs::Rename(base_filename_, archived_name);
+        SPDLOG_DEBUG("Log rotated: {} -> {}", base_filename_, archived_name);
 
-        // 如果开启了压缩，gzip 压缩归档文件
+        // 如果开启了压缩，使用嵌入式 zlib 进行 gzip 压缩
         if (compress_) {
-            std::string cmd = "gzip -f \"" + archived.string() + "\" 2>/dev/null";
-            int ret = std::system(cmd.c_str());
-            if (ret == 0) {
-                SPDLOG_DEBUG("Log compressed: {}.gz", archived.filename().string());
+            std::string gz_path = archived_name + ".gz";
+            gzFile gz = gzopen(gz_path.c_str(), "wb9");  // 最高压缩比
+            if (gz) {
+                os::File in;
+                if (in.Open(archived_name, os::FileMode::READ)) {
+                    char buf[8192];
+                    while (true) {
+                        size_t bytes = 0;
+                        if (!in.Read(buf, sizeof(buf), &bytes) || bytes == 0) break;
+                        gzwrite(gz, buf, bytes);
+                    }
+                }
+                gzclose(gz);
+                // 删除未压缩的原文件
+                os::fs::Remove(archived_name);
+                SPDLOG_DEBUG("Log compressed: {}.gz", archived_name);
             } else {
                 SPDLOG_WARN("gzip compression failed for {}, keeping uncompressed",
-                            archived.filename().string());
+                            archived_name);
             }
         }
 
@@ -113,8 +124,7 @@ private:
         CleanupOldFiles();
 
         // 重新打开当前日志文件
-        file_.open(base_filename_, std::ios::binary | std::ios::trunc);
-        if (!file_.is_open()) {
+        if (!file_.Open(base_filename_, os::FileMode::WRITE)) {
             throw spdlog::spdlog_ex("Failed to reopen log file: " + base_filename_);
         }
         current_size_ = 0;
@@ -122,25 +132,39 @@ private:
 
     void CleanupOldFiles() {
         std::string prefix = base_filename_ + ".";
-        std::vector<fs::path> archived_files;
+        std::vector<std::string> archived_files;
+        std::string dir = base_filename_;
+        auto dpos = dir.find_last_of("/\\");
+        if (dpos != std::string::npos) {
+            dir = dir.substr(0, dpos);
+        } else {
+            dir = ".";
+        }
+        std::string base_name = base_filename_;
+        auto bpos = base_name.find_last_of("/\\");
+        if (bpos != std::string::npos) {
+            base_name = base_name.substr(bpos + 1);
+        }
 
-        for (const auto& entry : fs::directory_iterator(fs::path(base_filename_).parent_path())) {
-            std::string filename = entry.path().filename().string();
-            if (filename.find(prefix) == 0 && filename != fs::path(base_filename_).filename()) {
-                archived_files.push_back(entry.path());
+        std::vector<os::fs::DirEntry> entries;
+        if (os::fs::ListDirectory(dir, entries)) {
+            for (const auto& entry : entries) {
+                if (entry.name.find(prefix) == 0 && entry.name != base_name) {
+                    archived_files.push_back(entry.path);
+                }
             }
         }
 
         // 按修改时间排序（最新的在前面）
         std::sort(archived_files.begin(), archived_files.end(),
-                  [](const fs::path& a, const fs::path& b) {
-                      return fs::last_write_time(a) > fs::last_write_time(b);
+                  [](const std::string& a, const std::string& b) {
+                      return os::fs::LastWriteTimeMs(a) > os::fs::LastWriteTimeMs(b);
                   });
 
         // 删除超出 max_files_ 的旧文件
         while (archived_files.size() > max_files_) {
-            fs::remove(archived_files.back());
-            SPDLOG_DEBUG("Removed old log: {}", archived_files.back().filename().string());
+            os::fs::Remove(archived_files.back());
+            SPDLOG_DEBUG("Removed old log: {}", archived_files.back());
             archived_files.pop_back();
         }
     }

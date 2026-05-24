@@ -3,10 +3,10 @@
 #include "storage/compaction.h"
 #include "storage/compressor.h"
 #include "storage/wal.h"
+#include "common/os/file.h"
+#include "common/os/fs.h"
 #include <cstdio>
-#include <filesystem>
 
-namespace fs = std::filesystem;
 using namespace minitsdb;
 
 class StorageTest : public ::testing::Test {
@@ -14,12 +14,13 @@ protected:
     std::string test_dir_ = "./test_storage_data";
 
     void SetUp() override {
-        fs::remove_all(test_dir_);
-        fs::create_directories(test_dir_ + "/tags/TESTTAG");
+        // 递归清理并重建
+        os::fs::RemoveAll(test_dir_);
+        os::fs::CreateDirectories(test_dir_ + "/tags/TESTTAG");
     }
 
     void TearDown() override {
-        fs::remove_all(test_dir_);
+        os::fs::RemoveAll(test_dir_);
     }
 };
 
@@ -64,6 +65,49 @@ TEST_F(StorageTest, SSTableWriteRead) {
     }
 }
 
+TEST_F(StorageTest, SSTableCRCVerify) {
+    // 创建测试数据
+    BlockCompressor bc;
+    std::vector<DataPoint> points;
+    for (int i = 0; i < 10; i++) {
+        DataPoint dp;
+        dp.ts = 1000 + i * 1000;
+        dp.value = static_cast<double>(i);
+        points.push_back(dp);
+    }
+    auto block = bc.Compress(points);
+
+    std::string sst_path = test_dir_ + "/tags/TESTTAG/data.sst";
+    {
+        SSTableWriter writer(sst_path);
+        ASSERT_TRUE(writer.Open());
+        writer.AddBlock(block);
+        writer.Close();
+    }
+
+    // 正常读取应成功
+    SSTableReader reader(sst_path);
+    EXPECT_TRUE(reader.Open());
+    reader.Close();
+
+    // 损坏文件尾部 CRC，读取应失败
+    {
+        os::File f;
+        ASSERT_TRUE(f.Open(sst_path, os::FileMode::READ_WRITE));
+        f.Seek(0, SEEK_END);
+        int64_t pos = f.Tell();
+        // 覆盖最后 4 字节的 CRC（倒数第 4 字节）
+        uint32_t bad_crc = 0xDEADBEEF;
+        f.Seek(pos - 4, SEEK_SET);
+        f.Write(&bad_crc, sizeof(bad_crc));
+        f.Close();
+    }
+
+    // CRC 不匹配应导致 Open 失败
+    SSTableReader bad_reader(sst_path);
+    EXPECT_FALSE(bad_reader.Open());
+}
+
 TEST_F(StorageTest, Compaction) {
     // 创建多个小 SSTable
     for (int f = 0; f < 5; f++) {
@@ -89,11 +133,18 @@ TEST_F(StorageTest, Compaction) {
 
     // 验证小文件被合并（文件数应减少）
     int sst_count = 0;
-    for (const auto& entry : fs::directory_iterator(test_dir_ + "/tags/TESTTAG")) {
-        if (entry.path().extension() == ".sst") sst_count++;
+    std::vector<os::fs::DirEntry> sst_entries;
+    if (os::fs::ListDirectory(test_dir_ + "/tags/TESTTAG", sst_entries)) {
+        for (const auto& entry : sst_entries) {
+            if (entry.name.size() > 4 &&
+                entry.name.substr(entry.name.size() - 4) == ".sst") {
+                sst_count++;
+            }
+        }
     }
     EXPECT_LE(sst_count, 3);  // 最多剩 3 个文件（5个合并为1个merged + 可能的残留）
 }
+
 
 TEST_F(StorageTest, WALWriteRecover) {
     std::string wal_path = test_dir_ + "/wal.log";

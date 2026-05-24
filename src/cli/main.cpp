@@ -1,9 +1,9 @@
 #include <iostream>
 #include <string>
-#include <fstream>
 #include <sstream>
 #include <memory>
 #include <grpcpp/grpcpp.h>
+#include "common/os/file.h"
 #include "proto_gen/minitsdb.grpc.pb.h"
 
 using namespace minitsdb;
@@ -226,14 +226,22 @@ int main(int argc, char* argv[]) {
         return ExecuteSQL(client, opts.exec_sql, opts.format) ? 0 : 1;
     }
     if (!opts.script_file.empty()) {
-        std::ifstream file(opts.script_file);
-        if (!file.is_open()) {
+        os::File file;
+        if (!file.Open(opts.script_file, os::FileMode::READ)) {
             std::cerr << "ERROR: Cannot open " << opts.script_file << "\n";
             return 1;
         }
+        // 读取整个文件到字符串
+        int64_t fsize = file.Size();
+        std::string file_content;
+        if (fsize > 0) {
+            file_content.resize(static_cast<size_t>(fsize));
+            file.Read(&file_content[0], static_cast<size_t>(fsize));
+        }
+        std::istringstream stream(file_content);
         std::string line;
         bool all_ok = true;
-        while (std::getline(file, line)) {
+        while (std::getline(stream, line)) {
             if (line.empty() || line[0] == '#') continue;
             std::cout << "> " << line << "\n";
             if (!ExecuteSQL(client, line, opts.format)) all_ok = false;

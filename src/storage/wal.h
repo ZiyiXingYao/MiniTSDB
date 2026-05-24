@@ -1,9 +1,10 @@
 #pragma once
 
 #include "common/types.h"
+#include "common/os/file.h"
+#include "common/os/fs.h"
 #include <string>
 #include <vector>
-#include <fstream>
 
 namespace minitsdb {
 
@@ -53,7 +54,7 @@ public:
 
 private:
     std::string path_;
-    std::ofstream file_;
+    os::File file_;
     size_t size_ = 0;
     bool opened_ = false;
 
@@ -89,7 +90,7 @@ private:
     std::string path_;
     std::vector<Entry> entries_;
 
-    bool ReadEntry(std::ifstream& file);
+    bool ReadEntry(os::File& file);
 };
 
 } // namespace minitsdb

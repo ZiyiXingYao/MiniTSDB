@@ -1,5 +1,11 @@
 #pragma once
 
+// ============================================================
+// 弃用说明：使用 minitsdb::os::File 和 minitsdb::os::fs 替代
+//   #include "common/os/file.h"
+//   #include "common/os/fs.h"
+// ============================================================
+
 #include <cstdio>
 #include <string>
 #include <vector>

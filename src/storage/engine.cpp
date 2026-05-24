@@ -4,7 +4,7 @@
 #include "storage/sstable.h"
 #include "cache/latest_cache.h"
 #include "common/logger.h"
-#include <filesystem>
+#include "common/os/fs.h"
 #include <algorithm>
 #include <unordered_map>
 
@@ -20,9 +20,9 @@ StorageEngine::~StorageEngine() {
 bool StorageEngine::Init() {
     // 创建数据目录
     try {
-        std::filesystem::create_directories(config_.hot_path + "/meta");
-        std::filesystem::create_directories(config_.hot_path + "/tags");
-        std::filesystem::create_directories(config_.cold_path);
+        os::fs::CreateDirectories(config_.hot_path + "/meta");
+        os::fs::CreateDirectories(config_.hot_path + "/tags");
+        os::fs::CreateDirectories(config_.cold_path);
     } catch (...) {
         return false;
     }
@@ -119,17 +119,21 @@ std::vector<DataPoint> StorageEngine::ReadRaw(const std::string& tag,
     // 从 SSTable 文件读取
     try {
         std::string tag_dir = config_.hot_path + "/tags/" + tag;
-        if (!std::filesystem::exists(tag_dir)) return result;
+        if (!os::fs::Exists(tag_dir)) return result;
 
-        for (const auto& entry : std::filesystem::directory_iterator(tag_dir)) {
-            if (entry.path().extension() != ".sst") continue;
+        std::vector<os::fs::DirEntry> entries;
+        if (os::fs::ListDirectory(tag_dir, entries)) {
+            for (const auto& entry : entries) {
+                if (entry.name.size() < 4 ||
+                    entry.name.substr(entry.name.size() - 4) != ".sst") continue;
 
-            SSTableReader reader(entry.path().string());
-            if (!reader.Open()) continue;
+                SSTableReader reader(entry.path);
+                if (!reader.Open()) continue;
 
-            auto points = reader.ReadRange(range);
-            result.insert(result.end(), points.begin(), points.end());
-            reader.Close();
+                auto points = reader.ReadRange(range);
+                result.insert(result.end(), points.begin(), points.end());
+                reader.Close();
+            }
         }
     } catch (const std::exception& e) {
         LOG_WARN("ReadRaw error for tag '{}': {}", tag, e.what());
