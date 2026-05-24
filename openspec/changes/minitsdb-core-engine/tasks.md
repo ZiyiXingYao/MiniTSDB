@@ -68,11 +68,11 @@
 
 ## 9. Cold / Hot Tiering
 
-- [ ] 9.1 Implement TierManager: scan hot directory, identify data older than hot_retention
-- [ ] 9.2 Implement TierManager::MoveToCold: move SSTable files from hot/ to cold/ directory
-- [ ] 9.3 Implement TierManager::PruneCold: delete SSTable files exceeding cold_retention
-- [ ] 9.4 Implement TierManager::ArchiveToExternal: move to archive_path instead of delete
-- [ ] 9.5 Implement background tier management thread with configurable interval
+- [x] 9.1 Implement TierManager: scan hot directory, identify data older than hot_retention
+- [x] 9.2 Implement TierManager::MoveToCold: move SSTable files from hot/ to cold/ directory
+- [x] 9.3 Implement TierManager::PruneCold: delete SSTable files exceeding cold_retention
+- [x] 9.4 Implement TierManager::ArchiveToExternal: move to archive_path instead of delete
+- [x] 9.5 Implement background tier management thread with configurable interval
 
 ## 10. Real-time Alarm Engine
 
@@ -94,35 +94,35 @@
 
 ## 12. Server — gRPC Service
 
-- [ ] 12.1 Define MiniTSDB.proto: service with Query/Insert/Auth/Admin RPCs
-- [ ] 12.2 Generate C++ gRPC + Protobuf code from .proto
-- [ ] 12.3 Implement gRPC server: start, stop, graceful shutdown with configurable port
-- [ ] 12.4 Implement Query RPC: receives SQL string, returns result as repeated rows
-- [ ] 12.5 Implement Insert RPC: batch data point insertion
-- [ ] 12.6 Implement Auth RPC: login → token response
-- [ ] 12.7 Implement result formatting in gRPC response
-- [ ] 12.8 Implement main.cpp: signal handling, gRPC server start/stop
+- [x] 12.1 Define MiniTSDB.proto: service with Query/Insert/Auth/Admin RPCs
+- [x] 12.2 Generate C++ gRPC + Protobuf code from .proto
+- [x] 12.3 Implement gRPC server: start, stop, graceful shutdown with configurable port
+- [x] 12.4 Implement Query RPC: receives SQL string, returns result as repeated rows
+- [x] 12.5 Implement Insert RPC: batch data point insertion
+- [x] 12.6 Implement Auth RPC: login → token response
+- [x] 12.7 Implement result formatting in gRPC response
+- [x] 12.8 Implement main.cpp: signal handling, gRPC server start/stop
 
 ## 13. CLI Client
 
-- [ ] 13.1 Implement CLI entry point: argument parsing (--host, --port, -f, --format)
-- [ ] 13.2 Implement interactive mode: readline-style prompt with history
-- [ ] 13.3 Implement batch mode: execute SQL from file
-- [ ] 13.4 Implement gRPC client connection to server
-- [ ] 13.5 Implement result formatting: table, CSV, JSON output modes
+- [x] 13.1 Implement CLI entry point: argument parsing (--host, --port, -f, --format)
+- [x] 13.2 Implement interactive mode: readline-style prompt with history
+- [x] 13.3 Implement batch mode: execute SQL from file
+- [x] 13.4 Implement gRPC client connection to server
+- [x] 13.5 Implement result formatting: table, CSV, JSON output modes
 
 ## 14. C SDK
 
-- [ ] 14.1 Define C API header: minitsdb.h with connect/query/result/free/disconnect
-- [ ] 14.2 Implement API wrappers over gRPC C++ client calls
-- [ ] 14.3 Implement result set management: rows, columns, value accessors
-- [ ] 14.4 Build as shared library (.dll/.so)
-- [ ] 14.5 Write C SDK usage example (test_c_sdk.c)
+- [x] 14.1 Define C API header: minitsdb.h with connect/query/result/free/disconnect
+- [x] 14.2 Implement API wrappers over gRPC C++ client calls
+- [x] 14.3 Implement result set management: rows, columns, value accessors
+- [x] 14.4 Build as shared library (.dll/.so)
+- [x] 14.5 Write C SDK usage example (test_c_sdk.c)
 
 ## 15. Testing — Google Test
 
-- [ ] 15.1 Set up gtest via vcpkg, integrate with CMake CTest
-- [ ] 15.2 Migrate existing test_compressor.cpp to use TEST() macros
-- [ ] 15.3 Write gRPC server unit tests (mock client → server round-trip)
-- [ ] 15.4 Write CLI integration test (spawn process, send SQL, check output)
-- [ ] 15.5 Write C SDK integration test (link .dll, call API, verify results)
+- [x] 15.1 Set up gtest via vcpkg, integrate with CMake CTest
+- [x] 15.2 Migrate existing test_compressor.cpp to use TEST() macros
+- [x] 15.3 Write gRPC server unit tests (mock client → server round-trip)
+- [x] 15.4 Write CLI integration test (spawn process, send SQL, check output)
+- [x] 15.5 Write C SDK integration test (link .dll, call API, verify results)

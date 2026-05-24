@@ -12,9 +12,10 @@ Clients SHALL authenticate by sending a LOGIN command with username and password
 - **THEN** the server SHALL reject the connection with an authentication error
 
 ### Requirement: System SHALL support three built-in roles: admin, operator, viewer
-**admin**: Full access — CREATE/ALTER/DROP TAG, CREATE ALARM, user management, INSERT, SELECT
-**operator**: Read-write access — INSERT, SELECT, query alarms, view all data
-**viewer**: Read-only access — SELECT LATEST, SELECT with aggregation, no INSERT
+The system SHALL implement three pre-defined roles with different permission levels:
+- **admin**: Full access — CREATE/ALTER/DROP TAG, CREATE ALARM, user management, INSERT, SELECT
+- **operator**: Read-write access — INSERT, SELECT, query alarms, view all data
+- **viewer**: Read-only access — SELECT LATEST, SELECT with aggregation, no INSERT
 
 #### Scenario: admin creates a tag
 - **WHEN** an admin user sends `CREATE TAG boiler_temp (...)`
