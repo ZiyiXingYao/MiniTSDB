@@ -206,6 +206,15 @@ set_target_properties(minitsdb_c PROPERTIES
 # ---------- 测试 (Google Test) ----------
 enable_testing()
 
+# 测试服务端辅助库
+add_library(test_server_lib STATIC tests/test_server.cpp)
+target_include_directories(test_server_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(test_server_lib PRIVATE
+    Threads::Threads
+)
+
 if(GTest_FOUND)
     function(add_minitsdb_gtest TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME} ${TEST_FILE})
@@ -232,7 +241,17 @@ if(GTest_FOUND)
     add_minitsdb_gtest(test_executor tests/test_executor.cpp)
     add_minitsdb_gtest(test_sdk tests/test_sdk.cpp)
     target_compile_definitions(test_sdk PRIVATE MINITSDB_SDK_BUILD)
-    add_minitsdb_gtest(test_cli tests/test_cli.cpp)
+
+    # test_cli 需要 test_server_lib
+    add_executable(test_cli tests/test_cli.cpp)
+    target_link_libraries(test_cli PRIVATE
+        minitsdb_core
+        test_server_lib
+        GTest::gtest
+        GTest::gtest_main
+    )
+    target_include_directories(test_cli PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    add_test(NAME test_cli COMMAND test_cli)
 else()
     # 回退：无 gtest 时使用简易测试
     function(add_minitsdb_test TEST_NAME TEST_FILE)
@@ -254,8 +273,10 @@ function(add_minitsdb_c_test TEST_NAME TEST_FILE)
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/src/sdk
         ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_SOURCE_DIR}/tests
     )
     target_compile_options(${TEST_NAME} PRIVATE -D_DLL -D_MT)
+    target_link_libraries(${TEST_NAME} PRIVATE test_server_lib)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endfunction()
 
