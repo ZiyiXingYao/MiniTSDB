@@ -149,8 +149,18 @@ bool TestServer::Start(int port, int timeout_ms) {
     port_ = port;
 
     std::string exe_path = FindServerPath();
-    std::string port_arg = "--port=" + std::to_string(port_);
-    std::string cmdline = "\"" + exe_path + "\" " + port_arg;
+
+    // 写入临时配置文件（服务端通过 -c 读取配置）
+    std::string config_path = "./test_server_port.conf";
+    std::string port_str = std::to_string(port_);
+    {
+        std::string conf = "server.port=" + port_str + "\n";
+        FILE* f = fopen(config_path.c_str(), "w");
+        if (f) { fwrite(conf.c_str(), 1, conf.size(), f); fclose(f); }
+    }
+
+    std::string cmdline = "\"" + exe_path + "\" -c \"" + config_path + "\"";
+    std::fprintf(stderr, "TestServer: Starting %s\n", cmdline.c_str());
 
 #ifdef _WIN32
     STARTUPINFOA si = {};
@@ -196,7 +206,7 @@ bool TestServer::Start(int port, int timeout_ms) {
         freopen("/dev/null", "w", stdout);
         freopen("/dev/null", "w", stderr);
 
-        execl(exe_path.c_str(), exe_path.c_str(), port_arg.c_str(), nullptr);
+        execl(exe_path.c_str(), exe_path.c_str(), "-c", config_path.c_str(), nullptr);
         // 如果 execl 返回，说明失败
         _exit(1);
     }
@@ -204,8 +214,9 @@ bool TestServer::Start(int port, int timeout_ms) {
 
     // 等待服务端就绪
     if (!WaitForReady(timeout_ms)) {
-        std::fprintf(stderr, "TestServer: Server failed to become ready within %dms\n",
-                     timeout_ms);
+        DWORD exit_code = 0;
+        GetExitCodeProcess(proc_info_.hProcess, &exit_code);
+        std::fprintf(stderr, "TestServer: Server exit code: %lu\n", exit_code);
         Stop();
         return false;
     }

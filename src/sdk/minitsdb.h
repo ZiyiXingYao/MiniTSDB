@@ -5,7 +5,7 @@
     #ifdef MINITSDB_SDK_BUILD
         #define MINITSDB_API __declspec(dllexport)
     #else
-        #define MINITSDB_API __declspec(dllimport)
+        #define MINITSDB_API
     #endif
 #else
     #define MINITSDB_API

@@ -13,82 +13,94 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # ---------- 第三方依赖 ----------
 find_package(Threads REQUIRED)
 
-# 优先使用 Clang 编译的 gtest
-set(GTEST_CLANG_INCLUDE "D:/Code/vcpkg/buildtrees/gtest/src/v1.17.0-0c449efaff.clean/googletest/include")
-set(GTEST_CLANG_LIB "D:/Code/googletest_build/lib/libgtest.a")
-set(GTEST_CLANG_MAIN_LIB "D:/Code/googletest_build/lib/libgtest_main.a")
+# vcpkg 安装路径（全部 Clang 编译，在本机用 x64-windows-llvm triplet）
+set(VCPKG_LLVM_DIR "D:/Code/vcpkg/installed/x64-windows-llvm")
 
-if(EXISTS "${GTEST_CLANG_LIB}")
-    message(STATUS "Using Clang-compiled gtest")
+# ============ gtest ============
+set(GTEST_INCLUDE "${VCPKG_LLVM_DIR}/include")
+set(GTEST_LIB "${VCPKG_LLVM_DIR}/lib/gtest.lib")
+set(GTEST_MAIN_LIB "${VCPKG_LLVM_DIR}/lib/gtest_main.lib")
+
+if(EXISTS "${GTEST_LIB}")
+    message(STATUS "Using vcpkg x64-windows-llvm gtest")
     set(GTest_FOUND TRUE)
-    add_library(GTest::gtest STATIC IMPORTED)
-    set_target_properties(GTest::gtest PROPERTIES
-        IMPORTED_LOCATION "${GTEST_CLANG_LIB}"
-        INTERFACE_INCLUDE_DIRECTORIES "${GTEST_CLANG_INCLUDE}"
-    )
-    add_library(GTest::gtest_main STATIC IMPORTED)
-    set_target_properties(GTest::gtest_main PROPERTIES
-        IMPORTED_LOCATION "${GTEST_CLANG_MAIN_LIB}"
-        INTERFACE_INCLUDE_DIRECTORIES "${GTEST_CLANG_INCLUDE}"
-    )
+
+    # gtest_main 可能不存在（vcpkg 只编了 gtest.lib）
+    set(GTEST_MAIN_LIB "${VCPKG_LLVM_DIR}/lib/gtest_main.lib")
+    if(EXISTS "${GTEST_MAIN_LIB}")
+        add_library(GTest::gtest_main STATIC IMPORTED)
+        set_target_properties(GTest::gtest_main PROPERTIES
+            IMPORTED_LOCATION "${GTEST_MAIN_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE}"
+        )
+    else()
+        # 用 gtest.lib 代替 gtest_main
+        add_library(GTest::gtest_main STATIC IMPORTED)
+        set_target_properties(GTest::gtest_main PROPERTIES
+            IMPORTED_LOCATION "${GTEST_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE}"
+        )
+    endif()
 else()
+    message(STATUS "vcpkg gtest not found, trying find_package")
     find_package(GTest CONFIG QUIET)
 endif()
 
-# Clang 编译的 gRPC 依赖
-set(GRPC_CLANG_DIR "D:/Code/grpc_clang_build")
-set(GRPC_CLANG_INSTALL "${GRPC_CLANG_DIR}/install")
+# ============ protobuf ============
+set(PROTOC_EXEC "${VCPKG_LLVM_DIR}/tools/protobuf/protoc.exe")
 
-if(EXISTS "${GRPC_CLANG_DIR}/build_grpc/grpc++.lib")
-    message(STATUS "Using Clang-compiled gRPC")
+# 使用 find_package 找到 protobuf 及其依赖的 abseil
+list(PREPEND CMAKE_PREFIX_PATH "${VCPKG_LLVM_DIR}")
+find_package(absl CONFIG QUIET)
+find_package(utf8_range CONFIG QUIET)
+
+# 直接链接 protobuf 静态库（cmake config 会错误开启 DLL 模式）
+set(PROTOBUF_LIB "${VCPKG_LLVM_DIR}/lib/libprotobuf.lib")
+add_library(protobuf::libprotobuf UNKNOWN IMPORTED)
+set_target_properties(protobuf::libprotobuf PROPERTIES
+    IMPORTED_LOCATION "${PROTOBUF_LIB}"
+    INTERFACE_INCLUDE_DIRECTORIES "${VCPKG_LLVM_DIR}/include"
+)
+set(Protobuf_FOUND TRUE)
+message(STATUS "Using direct protobuf static lib: ${PROTOBUF_LIB}")
+
+# ============ gRPC ============
+set(GRPC_INCLUDE "${VCPKG_LLVM_DIR}/include")
+set(GRPC_CPP_LIB "${VCPKG_LLVM_DIR}/lib/grpc++.lib")
+set(GRPC_C_LIB "${VCPKG_LLVM_DIR}/lib/grpc.lib")
+set(GRPC_GPR_LIB "${VCPKG_LLVM_DIR}/lib/gpr.lib")
+# grpc_cpp_plugin 是原生工具，在 MSVC triplet 下
+set(GRPC_PLUGIN_PATH "D:/Code/vcpkg/installed/x64-windows/tools/grpc/grpc_cpp_plugin.exe")
+
+if(EXISTS "${GRPC_CPP_LIB}")
+    message(STATUS "Using vcpkg x64-windows-llvm gRPC")
     set(gRPC_FOUND TRUE)
-    set(Protobuf_FOUND TRUE)
 
-    # protobuf
-    add_library(protobuf::libprotobuf STATIC IMPORTED)
-    set_target_properties(protobuf::libprotobuf PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_protobuf/protobuf.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "D:/Code/vcpkg/buildtrees/protobuf/src/v33.4-f8b43d71cd.clean/src;${GRPC_CLANG_INSTALL}/include"
-    )
-    add_library(protobuf::libprotobuf-lite STATIC IMPORTED)
-    set_target_properties(protobuf::libprotobuf-lite PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_protobuf/protobuf-lite.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "D:/Code/vcpkg/buildtrees/protobuf/src/v33.4-f8b43d71cd.clean/src;${GRPC_CLANG_INSTALL}/include"
-    )
-
-    # gRPC
+    # gRPC C++ 库
     add_library(gRPC::grpc++ STATIC IMPORTED)
     set_target_properties(gRPC::grpc++ PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/grpc++.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "D:/Code/vcpkg/buildtrees/grpc/src/v1.76.0-c85157dbaa.clean/include"
+        IMPORTED_LOCATION "${GRPC_CPP_LIB}"
+        INTERFACE_INCLUDE_DIRECTORIES "${GRPC_INCLUDE}"
     )
+    # gRPC C 库
     add_library(gRPC::grpc STATIC IMPORTED)
     set_target_properties(gRPC::grpc PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/grpc.lib"
+        IMPORTED_LOCATION "${GRPC_C_LIB}"
     )
+    # gRPC GPR 库
     add_library(gRPC::gpr STATIC IMPORTED)
     set_target_properties(gRPC::gpr PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/gpr.lib"
+        IMPORTED_LOCATION "${GRPC_GPR_LIB}"
     )
-    add_library(gRPC::grpc_plugin_support STATIC IMPORTED)
-    set_target_properties(gRPC::grpc_plugin_support PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/grpc_plugin_support.lib"
-    )
-    add_library(gRPC::address_sorting STATIC IMPORTED)
-    set_target_properties(gRPC::address_sorting PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/address_sorting.lib"
-    )
-    add_library(gRPC::upb STATIC IMPORTED)
-    set_target_properties(gRPC::upb PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/upb_base_lib.lib"
-    )
-    add_executable(gRPC::grpc_cpp_plugin IMPORTED)
-    set_target_properties(gRPC::grpc_cpp_plugin PROPERTIES
-        IMPORTED_LOCATION "${GRPC_CLANG_DIR}/build_grpc/grpc_cpp_plugin.exe"
-    )
+    # gRPC C++ 插件（代码生成工具）
+    if(EXISTS "${GRPC_PLUGIN_PATH}")
+        add_executable(gRPC::grpc_cpp_plugin IMPORTED)
+        set_target_properties(gRPC::grpc_cpp_plugin PROPERTIES
+            IMPORTED_LOCATION "${GRPC_PLUGIN_PATH}"
+        )
+    endif()
 else()
     find_package(gRPC CONFIG QUIET)
-    find_package(Protobuf CONFIG QUIET)
 endif()
 
 # ---------- 编译选项 (Google C++ 规范 + Clang) ----------
@@ -116,15 +128,21 @@ target_include_directories(minitsdb_core PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/third_party
     ${CMAKE_CURRENT_BINARY_DIR}
-    "D:/Code/vcpkg/installed/x64-windows/include"
-    "D:/Code/vcpkg/packages/zlib_x64-windows/include"
+    "${VCPKG_LLVM_DIR}/include"
 )
 
 target_compile_options(minitsdb_core PRIVATE ${COMMON_FLAGS})
 
+# C SDK 源码在 core 中编译，定义导出标志避免 __declspec(dllimport)
+target_compile_definitions(minitsdb_core PRIVATE minitsdb_c_EXPORTS)
+
+# protobuf 静态库 + 全量 abseil（protobuf 依赖的 absl 多且分散）
+file(GLOB ABSL_LIBS "${VCPKG_LLVM_DIR}/lib/absl_*.lib")
+target_link_libraries(minitsdb_core PUBLIC "${PROTOBUF_LIB}" ${ABSL_LIBS})
+
 target_link_libraries(minitsdb_core PUBLIC
     Threads::Threads
-    "D:/Code/vcpkg/packages/zlib_x64-windows/lib/zlib.lib"
+    "${VCPKG_LLVM_DIR}/lib/zlib.lib"
 )
 
 # ---------- Protobuf 代码生成 ----------
@@ -133,7 +151,7 @@ if(gRPC_FOUND AND Protobuf_FOUND)
     set(PROTO_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/proto_gen)
     file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
 
-    find_program(PROTOC_EXEC protoc.exe PATHS "D:/Code/vcpkg/packages/protobuf_x64-windows/tools/protobuf" NO_DEFAULT_PATH)
+    find_program(PROTOC_EXEC protoc.exe PATHS "${VCPKG_LLVM_DIR}/tools/protobuf" NO_DEFAULT_PATH)
     if(NOT PROTOC_EXEC)
         find_program(PROTOC_EXEC protoc)
     endif()
@@ -148,7 +166,7 @@ if(gRPC_FOUND AND Protobuf_FOUND)
             --proto_path=${CMAKE_SOURCE_DIR}/protos
             --cpp_out=${PROTO_GEN_DIR}
             --grpc_out=${PROTO_GEN_DIR}
-            --plugin=protoc-gen-grpc=${GRPC_CLANG_DIR}/build_grpc/grpc_cpp_plugin.exe
+            --plugin=protoc-gen-grpc=${GRPC_PLUGIN_PATH}
             ${CMAKE_SOURCE_DIR}/protos/minitsdb.proto
         DEPENDS ${CMAKE_SOURCE_DIR}/protos/minitsdb.proto
         COMMENT "Generating protobuf/grpc code for minitsdb.proto"
@@ -160,22 +178,39 @@ if(gRPC_FOUND AND Protobuf_FOUND)
         ${PROTO_GEN_DIR}/minitsdb.grpc.pb.cc
     )
     target_include_directories(minitsdb_core PUBLIC
-        "${GRPC_CLANG_INSTALL}/include"
-        "${GRPC_CLANG_DIR}/build_abseil"
-        "D:/Code/vcpkg/buildtrees/protobuf/src/v33.4-f8b43d71cd.clean/third_party/utf8_range"
+        "${VCPKG_LLVM_DIR}/include"
     )
     target_link_libraries(minitsdb_core PUBLIC
         gRPC::grpc++
         gRPC::grpc
-        protobuf::libprotobuf
-        "D:/Code/grpc_clang_build/install/lib/abseil_all.lib"
-        "D:/Code/grpc_clang_build/install/lib/upb_all.lib"
-        "D:/Code/grpc_clang_build/libutf8_range.a"
-        "D:/Code/grpc_clang_build/build_cares/lib/cares.lib"
-        "D:/Code/grpc_clang_build/build_re2/re2.lib"
-        "D:/Code/vcpkg/packages/openssl_x64-windows/lib/libcrypto.lib"
-        "D:/Code/vcpkg/packages/openssl_x64-windows/lib/libssl.lib"
-        "D:/Code/vcpkg/packages/zlib_x64-windows/lib/zlib.lib"
+        "${VCPKG_LLVM_DIR}/lib/gpr.lib"
+        "${VCPKG_LLVM_DIR}/lib/address_sorting.lib"
+        "${VCPKG_LLVM_DIR}/lib/grpc_plugin_support.lib"
+        "${VCPKG_LLVM_DIR}/lib/libupb.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_base_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_hash_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_json_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_lex_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_mem_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_message_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_mini_descriptor_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_mini_table_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_reflection_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_textformat_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/upb_wire_lib.lib"
+        "${VCPKG_LLVM_DIR}/lib/utf8_range.lib"
+        "${VCPKG_LLVM_DIR}/lib/utf8_validity.lib"
+        "${VCPKG_LLVM_DIR}/lib/re2.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_synchronization.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_time.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_cord.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_strings.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_hash.lib"
+        "${VCPKG_LLVM_DIR}/lib/absl_status.lib"
+        "${VCPKG_LLVM_DIR}/lib/cares.lib"
+        "${VCPKG_LLVM_DIR}/lib/libcrypto.lib"
+        "${VCPKG_LLVM_DIR}/lib/libssl.lib"
+        "${VCPKG_LLVM_DIR}/lib/zlib.lib"
         ws2_32
         crypt32
         iphlpapi
@@ -192,15 +227,11 @@ target_link_libraries(minitsdb_cli PRIVATE minitsdb_core)
 target_include_directories(minitsdb_cli PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # ---------- C SDK ----------
-add_library(minitsdb_c SHARED src/sdk/minitsdb_sdk.cpp)
-target_link_libraries(minitsdb_c PRIVATE minitsdb_core)
-target_include_directories(minitsdb_c PUBLIC
+add_library(minitsdb_c INTERFACE)
+target_link_libraries(minitsdb_c INTERFACE minitsdb_core)
+target_include_directories(minitsdb_c INTERFACE
     ${CMAKE_SOURCE_DIR}/src/sdk
     ${CMAKE_CURRENT_BINARY_DIR}
-)
-set_target_properties(minitsdb_c PROPERTIES
-    OUTPUT_NAME minitsdb
-    PREFIX ""
 )
 
 # ---------- 测试 (Google Test) ----------
@@ -217,12 +248,14 @@ target_link_libraries(test_server_lib PRIVATE
 
 if(GTest_FOUND)
     function(add_minitsdb_gtest TEST_NAME TEST_FILE)
-        add_executable(${TEST_NAME} ${TEST_FILE})
+        add_executable(${TEST_NAME} ${TEST_FILE}
+            "D:/Code/vcpkg/buildtrees/gtest/src/v1.17.0-0c449efaff.clean/googletest/src/gtest_main.cc"
+        )
         target_link_libraries(${TEST_NAME} PRIVATE
             minitsdb_core
-            GTest::gtest
-            GTest::gtest_main
+            "${GTEST_LIB}"
         )
+        target_include_directories(${TEST_NAME} PRIVATE "${GTEST_INCLUDE}")
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endfunction()
 
@@ -243,12 +276,13 @@ if(GTest_FOUND)
     target_compile_definitions(test_sdk PRIVATE MINITSDB_SDK_BUILD)
 
     # test_cli 需要 test_server_lib
-    add_executable(test_cli tests/test_cli.cpp)
+    add_executable(test_cli tests/test_cli.cpp
+        "D:/Code/vcpkg/buildtrees/gtest/src/v1.17.0-0c449efaff.clean/googletest/src/gtest_main.cc"
+    )
     target_link_libraries(test_cli PRIVATE
         minitsdb_core
         test_server_lib
-        GTest::gtest
-        GTest::gtest_main
+        "${GTEST_LIB}"
     )
     target_include_directories(test_cli PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_cli COMMAND test_cli)
@@ -276,6 +310,7 @@ function(add_minitsdb_c_test TEST_NAME TEST_FILE)
         ${CMAKE_SOURCE_DIR}/tests
     )
     target_compile_options(${TEST_NAME} PRIVATE -D_DLL -D_MT)
+    target_compile_definitions(${TEST_NAME} PRIVATE MINITSDB_SDK_BUILD)
     target_link_libraries(${TEST_NAME} PRIVATE test_server_lib)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endfunction()
