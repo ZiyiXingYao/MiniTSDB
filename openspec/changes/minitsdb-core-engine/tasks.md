@@ -33,11 +33,11 @@
 - [x] 5.1 Implement SSTable format: header (magic, version, tag, time range, point count) + compressed blocks
 - [x] 5.2 Implement SSTableWriter: write compressed blocks to file
 - [x] 5.3 Implement SSTableReader: open file, read header, decompress blocks by time range
-- [ ] 5.4 Implement background Compaction: merge small SSTables, move cold data to HDD
+- [x] 5.4 Implement background Compaction: merge small SSTables, move cold data to HDD
 - [x] 5.5 Implement StorageEngine::ReadRaw: locate SSTable files, decompress matching time range
 - [x] 5.6 Implement StorageEngine::ReadAggregated: stream decompress + bucket aggregation
 - [x] 5.7 Implement StorageEngine::Flush: force flush all MemTables to SSTable
-- [ ] 5.8 Write unit tests for storage (test_storage.cpp): write/read cycle, compaction
+- [x] 5.8 Write unit tests for storage (test_storage.cpp): write/read cycle, compaction
 
 ## 6. Latest Value Cache
 
@@ -88,8 +88,8 @@
 - [x] 11.2 Implement password hashing (SHA-256 or bcrypt-simple)
 - [x] 11.3 Implement session token generation and validation
 - [x] 11.4 Implement role-based permission check during SQL execution
-- [ ] 11.5 Implement CREATE USER / ALTER USER SQL syntax and execution
-- [ ] 11.6 Implement login handshake: LOGIN username/password → session token response
+- [x] 11.5 Implement CREATE USER / ALTER USER SQL syntax and execution
+- [x] 11.6 Implement login handshake: LOGIN username/password → session token response
 - [x] 11.7 Persist user accounts to data/hot/meta/users.db
 
 ## 12. Server — gRPC Service
