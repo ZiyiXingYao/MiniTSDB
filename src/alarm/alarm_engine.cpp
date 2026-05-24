@@ -58,6 +58,14 @@ void AlarmEngine::Evaluate(const std::string& tag, const DataPoint& point) {
         if (rule.tag_name != tag) continue;
 
         if (rule.Evaluate(val)) {
+            // 去重：同一规则 60 秒内不重复触发
+            auto it = last_trigger_time_.find(rule.name);
+            if (it != last_trigger_time_.end() &&
+                point.ts - it->second < 60000) {
+                continue;
+            }
+            last_trigger_time_[rule.name] = point.ts;
+
             AlarmEvent event;
             event.alarm_name = rule.name;
             event.tag_name = tag;
@@ -65,6 +73,11 @@ void AlarmEngine::Evaluate(const std::string& tag, const DataPoint& point) {
             event.ts = point.ts;
             event.condition = rule.condition;
             events_.push_back(event);
+
+            // 限制 events_ 大小，最多保留 10000 条
+            if (events_.size() > 10000) {
+                events_.erase(events_.begin(), events_.begin() + (events_.size() - 10000));
+            }
 
             if (on_alarm_) {
                 on_alarm_(event);

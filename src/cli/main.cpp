@@ -125,17 +125,45 @@ void PrintTable(const QueryResponse& res) {
     std::cout << "(" << res.rows_size() << " rows)\n";
 }
 
+// 转义 CSV 字段中的双引号
+std::string EscapeCSV(const std::string& s) {
+    std::string r;
+    r.reserve(s.size() + 2);
+    for (char c : s) {
+        if (c == '"') r += "\"\"";
+        else r += c;
+    }
+    return r;
+}
+
+// 转义 JSON 字符串中的特殊字符
+std::string EscapeJSON(const std::string& s) {
+    std::string r;
+    r.reserve(s.size() + 2);
+    for (char c : s) {
+        switch (c) {
+            case '"':  r += "\\\""; break;
+            case '\\': r += "\\\\"; break;
+            case '\n': r += "\\n";  break;
+            case '\r': r += "\\r";  break;
+            case '\t': r += "\\t";  break;
+            default:   r += c;       break;
+        }
+    }
+    return r;
+}
+
 void PrintCSV(const QueryResponse& res) {
     for (int i = 0; i < res.columns_size(); i++) {
         if (i > 0) std::cout << ",";
-        std::cout << "\"" << res.columns(i) << "\"";
+        std::cout << "\"" << EscapeCSV(res.columns(i)) << "\"";
     }
     std::cout << "\n";
 
     for (int r = 0; r < res.rows_size(); r++) {
         for (int c = 0; c < res.rows(r).values_size(); c++) {
             if (c > 0) std::cout << ",";
-            std::cout << "\"" << res.rows(r).values(c) << "\"";
+            std::cout << "\"" << EscapeCSV(res.rows(r).values(c)) << "\"";
         }
         std::cout << "\n";
     }
@@ -145,7 +173,7 @@ void PrintJSON(const QueryResponse& res) {
     std::cout << "{\n  \"columns\": [";
     for (int i = 0; i < res.columns_size(); i++) {
         if (i > 0) std::cout << ", ";
-        std::cout << "\"" << res.columns(i) << "\"";
+        std::cout << "\"" << EscapeJSON(res.columns(i)) << "\"";
     }
     std::cout << "],\n  \"rows\": [\n";
     for (int r = 0; r < res.rows_size(); r++) {
@@ -153,8 +181,8 @@ void PrintJSON(const QueryResponse& res) {
         std::cout << "    {";
         for (int c = 0; c < res.rows(r).values_size(); c++) {
             if (c > 0) std::cout << ", ";
-            std::cout << "\"" << res.columns(c) << "\": \""
-                      << res.rows(r).values(c) << "\"";
+            std::cout << "\"" << EscapeJSON(res.columns(c)) << "\": \""
+                      << EscapeJSON(res.rows(r).values(c)) << "\"";
         }
         std::cout << "}";
     }

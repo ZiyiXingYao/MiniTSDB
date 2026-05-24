@@ -185,22 +185,37 @@ QueryResult Executor::ExecuteSelectAggregate(const SelectStmt& stmt) {
 
     // Parse bucket size
     int64_t bucket_ms = 300000;  // default 5min
-    if (!stmt.group_by->bucket.empty()) {
+    if (stmt.group_by && !stmt.group_by->bucket.empty()) {
+        std::string num_part;
+        for (char c : stmt.group_by->bucket) {
+            if (std::isdigit(c)) num_part += c;
+        }
         char unit = stmt.group_by->bucket.back();
-        std::string num = stmt.group_by->bucket.substr(0, stmt.group_by->bucket.size() - 1);
-        try {
-            int64_t val = std::stoll(num);
-            switch (unit) {
-                case 's': bucket_ms = val * 1000; break;
-                case 'm': bucket_ms = val * 60000; break;
-                case 'h': bucket_ms = val * 3600000; break;
-                case 'd': bucket_ms = val * 86400000; break;
-                default: bucket_ms = val; break;
-            }
-        } catch (...) {}
+        if (std::isalpha(unit) && !num_part.empty()) {
+            try {
+                int64_t val = std::stoll(num_part);
+                switch (unit) {
+                    case 's': bucket_ms = val * 1000; break;
+                    case 'm': bucket_ms = val * 60000; break;
+                    case 'h': bucket_ms = val * 3600000; break;
+                    case 'd': bucket_ms = val * 86400000; break;
+                    default: bucket_ms = val; break;
+                }
+            } catch (...) {}
+        }
+    }
+    if (bucket_ms <= 0) bucket_ms = 300000;  // safety
+
+    // 从 stmt 中提取聚合类型
+    AggType agg_type = AggType::AVG;
+    for (const auto& col : stmt.columns) {
+        if (col.is_aggregate && col.agg_type != AggType::NONE) {
+            agg_type = col.agg_type;
+            break;
+        }
     }
 
-    auto agg_results = engine_->ReadAggregated(tag, range, bucket_ms, AggType::AVG);
+    auto agg_results = engine_->ReadAggregated(tag, range, bucket_ms, agg_type);
 
     for (const auto& ar : agg_results) {
         std::vector<std::string> row;

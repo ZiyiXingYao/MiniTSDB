@@ -124,7 +124,14 @@ public:
 
     Status Admin(ServerContext* context, const AdminRequest* request,
                  AdminResponse* response) override {
-        Executor executor(engine_, cache_);
+        // 权限检查
+        if (auth_ && !auth_->CheckPermission(request->token(), "CREATE TAG")) {
+            response->set_ok(false);
+            response->set_error("Permission denied");
+            return Status::OK;
+        }
+
+        Executor executor(engine_, cache_, auth_);
         auto result = executor.ExecuteSQL(request->command());
 
         response->set_ok(result.ok);
@@ -161,6 +168,7 @@ bool GrpcServer::Start() {
     std::string server_addr = config_.listen_addr + ":" + std::to_string(config_.port);
 
     auto* service = new MiniTSDBServiceImpl(engine_, cache_, auth_);
+    service_ = service;
 
     ServerBuilder builder;
     builder.AddListeningPort(server_addr, grpc::InsecureServerCredentials());
@@ -190,6 +198,8 @@ void GrpcServer::Stop() {
             static_cast<Server*>(server_)->Shutdown();
             server_ = nullptr;
         }
+        delete static_cast<MiniTSDB::Service*>(service_);
+        service_ = nullptr;
         if (server_thread_.joinable()) {
             server_thread_.join();
         }

@@ -56,7 +56,7 @@ void TierManager::WorkerLoop() {
 
 void TierManager::MoveExpiredHotToCold() {
     try {
-        auto now = std::chrono::system_clock::now();
+        auto now = fs::file_time_type::clock::now();
         auto cutoff = now - std::chrono::hours(24 * hot_retention_days_);
 
         std::string tags_path = hot_path_ + "/tags";
@@ -70,17 +70,19 @@ void TierManager::MoveExpiredHotToCold() {
                 if (sst_file.path().extension() != ".sst") continue;
 
                 auto last_write = sst_file.last_write_time();
-                // 比较文件时间
-                auto file_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                    last_write - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-
-                if (file_time < cutoff) {
+                if (last_write < cutoff) {
                     // 移到冷存
                     std::string cold_tag_dir = cold_path_ + "/" + tag_name;
                     fs::create_directories(cold_tag_dir);
 
                     std::string dest = cold_tag_dir + "/" + sst_file.path().filename().string();
-                    fs::rename(sst_file.path(), dest);
+                    std::error_code ec;
+                    fs::rename(sst_file.path(), dest, ec);
+                    if (ec) {
+                        // 跨卷时 copy + delete
+                        fs::copy_file(sst_file.path(), dest, ec);
+                        if (!ec) fs::remove(sst_file.path(), ec);
+                    }
 
                     if (on_move_cold_) {
                         on_move_cold_(tag_name, dest);
@@ -102,7 +104,7 @@ void TierManager::MoveExpiredHotToCold() {
 
 void TierManager::PruneExpiredCold() {
     try {
-        auto now = std::chrono::system_clock::now();
+        auto now = fs::file_time_type::clock::now();
         auto cutoff = now - std::chrono::hours(24 * cold_retention_days_);
 
         if (!fs::exists(cold_path_)) return;
@@ -114,15 +116,15 @@ void TierManager::PruneExpiredCold() {
                 if (sst_file.path().extension() != ".sst") continue;
 
                 auto last_write = sst_file.last_write_time();
-                auto file_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                    last_write - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-
-                if (file_time < cutoff) {
+                if (last_write < cutoff) {
                     if (!archive_path_.empty()) {
                         ArchiveToExternal(sst_file.path().string());
                     }
-                    fs::remove(sst_file.path());
-                    LOG_INFO("Removed expired cold data: {}", sst_file.path().string());
+                    std::error_code ec;
+                    fs::remove(sst_file.path(), ec);
+                    if (!ec) {
+                        LOG_INFO("Removed expired cold data: {}", sst_file.path().string());
+                    }
                 }
             }
         }

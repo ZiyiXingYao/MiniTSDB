@@ -62,6 +62,7 @@ private:
     std::vector<AlarmRule> rules_;
     std::vector<AlarmEvent> events_;
     AlarmCallback on_alarm_;
+    std::unordered_map<std::string, Timestamp> last_trigger_time_;
 
     // 解析条件表达式
     bool ParseCondition(const std::string& condition,

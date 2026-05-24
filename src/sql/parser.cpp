@@ -36,11 +36,21 @@ std::string ExtractQuoted(const std::string& sql, size_t& pos) {
     if (quote != '\'' && quote != '"') return "";
 
     pos++;  // 跳过起始引号
-    size_t start = pos;
-    while (pos < sql.size() && sql[pos] != quote) pos++;
-
-    std::string result = sql.substr(start, pos - start);
-    if (pos < sql.size()) pos++;  // 跳过结束引号
+    std::string result;
+    while (pos < sql.size()) {
+        if (sql[pos] == quote) {
+            // SQL 标准转义：两个连续引号表示一个引号
+            if (pos + 1 < sql.size() && sql[pos + 1] == quote) {
+                result += quote;
+                pos += 2;
+                continue;
+            }
+            pos++;  // 跳过结束引号
+            return result;
+        }
+        result += sql[pos];
+        pos++;
+    }
     return result;
 }
 

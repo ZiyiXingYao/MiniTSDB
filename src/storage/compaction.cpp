@@ -97,18 +97,31 @@ void Compaction::CompactTag(const std::string& tag_name,
                             });
     all_points.erase(last, all_points.end());
 
-    // 压缩为新的 SSTable
+    // 压缩为新 SSTable
     BlockCompressor compressor;
     auto block = compressor.Compress(all_points);
 
+    // 先写入临时文件，再原子重命名，防止崩溃产生不完整文件
+    std::string tmp_file = tag_dir + "/.tmp_merge_" +
+        std::to_string(all_points.front().ts) + "_" +
+        std::to_string(all_points.back().ts) + ".sst";
     std::string merged_file = tag_dir + "/merged_" +
         std::to_string(all_points.front().ts) + "_" +
         std::to_string(all_points.back().ts) + ".sst";
 
-    SSTableWriter writer(merged_file);
+    SSTableWriter writer(tmp_file);
     if (!writer.Open()) return;
     writer.AddBlock(block);
     writer.Close();
+
+    // 原子重命名
+    std::error_code ec;
+    fs::rename(tmp_file, merged_file, ec);
+    if (ec) {
+        fs::remove(tmp_file, ec);
+        LOG_WARN("Compaction rename failed: {}", ec.message());
+        return;
+    }
 
     // 删除旧的小文件
     for (const auto& f : small_files) {

@@ -38,6 +38,7 @@ private:
     std::atomic<bool> running_{false};
     std::thread server_thread_;
     void* server_ = nullptr;  // grpc::Server*
+    void* service_ = nullptr; // MiniTSDB::Service*
 };
 
 } // namespace minitsdb
