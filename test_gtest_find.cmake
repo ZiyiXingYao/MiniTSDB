@@ -1,0 +1,7 @@
+find_package(GTest CONFIG)
+message(STATUS "GTest_FOUND=${GTest_FOUND}")
+if(GTest_FOUND)
+    message(STATUS "GTEST_INCLUDE_DIRS=${GTest_INCLUDE_DIRS}")
+    get_target_property(gtest_inc GTest::gtest INTERFACE_INCLUDE_DIRECTORIES)
+    message(STATUS "GTest::gtest include dirs: ${gtest_inc}")
+endif()

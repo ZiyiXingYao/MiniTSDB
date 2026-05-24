@@ -1,0 +1,5 @@
+set(GTest_INCLUDE_DIRS "D:/Code/vcpkg/buildtrees/gtest/src/v1.17.0-0c449efaff.clean/googletest/include")
+set(GTest_LIBRARY "D:/Code/googletest_build/lib/libgtest.a")
+set(GTest_MAIN_LIBRARY "D:/Code/googletest_build/lib/libgtest_main.a")
+set(GTest_BOTH_LIBRARIES "${GTest_LIBRARY};${GTest_MAIN_LIBRARY}")
+set(GTest_FOUND TRUE)

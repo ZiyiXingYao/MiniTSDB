@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package minitsdb;
+
+// MiniTSDB 时序数据库 gRPC 服务
+service MiniTSDB {
+    // 执行 SQL 查询
+    rpc Query(QueryRequest) returns (QueryResponse);
+    
+    // 批量写入数据点
+    rpc Insert(InsertRequest) returns (InsertResponse);
+    
+    // 用户认证
+    rpc Auth(AuthRequest) returns (AuthResponse);
+    
+    // 管理命令
+    rpc Admin(AdminRequest) returns (AdminResponse);
+}
+
+// ---------- 查询 ----------
+message QueryRequest {
+    string sql = 1;              // SQL 语句
+    string token = 2;            // 认证 token
+}
+
+message QueryResponse {
+    bool ok = 1;
+    string error = 2;
+    repeated string columns = 3; // 列名
+    repeated Row rows = 4;       // 数据行
+}
+
+message Row {
+    repeated string values = 1;
+}
+
+// ---------- 写入 ----------
+message InsertRequest {
+    string token = 1;
+    repeated TagValue points = 2;
+}
+
+message TagValue {
+    string tag = 1;
+    int64 timestamp = 2;
+    double value = 3;
+}
+
+message InsertResponse {
+    bool ok = 1;
+    string error = 2;
+    int64 count = 3;  // 写入的数据点数量
+}
+
+// ---------- 认证 ----------
+message AuthRequest {
+    string username = 1;
+    string password = 2;
+}
+
+message AuthResponse {
+    bool ok = 1;
+    string error = 2;
+    string token = 3;    // 会话 token
+    string role = 4;     // admin / operator / viewer
+}
+
+// ---------- 管理 ----------
+message AdminRequest {
+    string token = 1;
+    string command = 2;  // SQL 管理命令 (CREATE TAG, ALTER SYSTEM 等)
+}
+
+message AdminResponse {
+    bool ok = 1;
+    string error = 2;
+    string result = 3;
+}
