@@ -28,3 +28,10 @@ The SDK SHALL be compiled as a shared library (.dll on Windows, .so on Linux) wi
 - **WHEN** a C program includes minitsdb.h and links against libminitsdb
 - **THEN** the program SHALL successfully call all SDK functions
 
+### Requirement: C SDK test SHALL auto-start the server
+test_c_sdk SHALL use TestServer or CTest fixtures to automatically start/stop the server, requiring no manual setup.
+
+#### Scenario: SDK test passes with auto-started server
+- **WHEN** running `ctest -R test_c_sdk` without any prior server running
+- **THEN** the test SHALL pass (connect, query, disconnect)
+

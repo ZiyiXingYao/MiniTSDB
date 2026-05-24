@@ -24,3 +24,10 @@ The CLI SHALL support `--format table` (default), `--format csv`, and `--format 
 - **WHEN** running `minitsdb --format json -e "SELECT * FROM boiler_temp LATEST"`
 - **THEN** the CLI SHALL output results as a JSON array of objects
 
+### Requirement: CLI integration tests SHALL auto-start the server
+test_cli SHALL use TestServer in SetUpTestSuite to start the server without requiring manual setup.
+
+#### Scenario: CLI insert and query test
+- **WHEN** running `ctest -R test_cli`
+- **THEN** the test SHALL pass, including InsertAndQuery, FormatTable, and FormatJson sub-tests
+
