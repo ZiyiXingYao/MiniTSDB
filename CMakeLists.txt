@@ -107,6 +107,7 @@ file(GLOB_RECURSE CORE_SOURCES
     src/server/*.cpp
     src/alarm/*.cpp
     src/auth/*.cpp
+    src/sdk/minitsdb_sdk.cpp
 )
 
 add_library(minitsdb_core STATIC ${CORE_SOURCES})
@@ -225,6 +226,9 @@ if(GTest_FOUND)
     add_minitsdb_gtest(test_cache tests/test_cache.cpp)
     add_minitsdb_gtest(test_config tests/test_config.cpp)
     add_minitsdb_gtest(test_executor tests/test_executor.cpp)
+    add_minitsdb_gtest(test_sdk tests/test_sdk.cpp)
+    target_compile_definitions(test_sdk PRIVATE MINITSDB_SDK_BUILD)
+    add_minitsdb_gtest(test_cli tests/test_cli.cpp)
 else()
     # 回退：无 gtest 时使用简易测试
     function(add_minitsdb_test TEST_NAME TEST_FILE)
