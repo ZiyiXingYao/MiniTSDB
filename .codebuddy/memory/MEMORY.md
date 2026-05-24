@@ -1,0 +1,6 @@
+- [superpowers-zh global install](superpowers-global.md) — superpowers 20 skills 已复制到全局 `.codebuddy/skills/`
+- [project-overview](project-overview.md) — MiniTSDB 项目定位、技术栈、构建系统、开发状态
+- [code-architecture](code-architecture.md) — MiniTSDB 模块架构、目录结构、数据流、各模块职责
+- [design-decisions](design-decisions.md) — 核心设计原则、关键决策、SSTable/WAL/压缩格式
+- [project-requirements](project-requirements.md) — 目标场景、功能/非功能需求、配置项
+- [coding-rules](coding-rules.md) — 编码规范、命名约定、代码风格、OpenSpec 工作流规则

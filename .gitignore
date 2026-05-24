@@ -36,3 +36,7 @@ compile_commands.json
 # Test artifacts
 test_wal.bin
 *.sst
+
+# CodeBuddy session logs (personal/transient)
+.codebuddy/*
+!.codebuddy/memory/
