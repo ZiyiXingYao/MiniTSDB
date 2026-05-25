@@ -8,6 +8,8 @@
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <condition_variable>
+#include <mutex>
 #include <ctime>
 
 namespace minitsdb {
@@ -50,6 +52,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> dirty_{false};
     int save_interval_sec_ = 10;
+    std::mutex save_mutex_;
+    std::condition_variable save_cv_;
 
     bool MatchPattern(const std::string& tag, const std::string& pattern);
 };

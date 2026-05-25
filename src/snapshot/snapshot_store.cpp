@@ -23,7 +23,11 @@ bool SnapshotStore::Init(const std::string& snapshot_dir) {
 }
 
 void SnapshotStore::Shutdown() {
-    running_ = false;
+    {
+        std::lock_guard lock(save_mutex_);
+        running_ = false;
+    }
+    save_cv_.notify_one();  // 唤醒 SaveLoop 退出
     if (save_thread_ && save_thread_->joinable()) {
         save_thread_->join();
     }
@@ -34,8 +38,11 @@ void SnapshotStore::Shutdown() {
 }
 
 void SnapshotStore::SaveLoop() {
+    std::unique_lock lock(save_mutex_);
     while (running_) {
-        std::this_thread::sleep_for(std::chrono::seconds(save_interval_sec_));
+        // 等待固定间隔或立即唤醒（OnWrite 通知）
+        save_cv_.wait_for(lock, std::chrono::seconds(save_interval_sec_),
+                          [this] { return !running_; });
         if (dirty_.exchange(false)) {
             SaveToFile();
         }
@@ -47,15 +54,21 @@ void SnapshotStore::OnWrite(const std::string& tag, const DataPoint& point) {
     entry.tag = tag;
     entry.timestamp = point.ts;
     entry.valid = true;
+
+    // DataPoint::value 是 variant<double, int64_t, string>
     if (std::holds_alternative<double>(point.value)) {
         entry.value = std::get<double>(point.value);
+    } else if (std::holds_alternative<int64_t>(point.value)) {
+        entry.value = static_cast<double>(std::get<int64_t>(point.value));
     }
+    // string 类型不设 value（保持 0.0），已标记 valid = true
 
     {
         std::unique_lock lock(mutex_);
         snapshot_[tag] = entry;
     }
     dirty_.store(true, std::memory_order_relaxed);
+    save_cv_.notify_one();  // 通知 SaveLoop 尽快保存
 }
 
 bool SnapshotStore::Get(const std::string& tag, CachedSnapshot& out) {
