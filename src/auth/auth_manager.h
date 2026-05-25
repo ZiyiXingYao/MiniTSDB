@@ -45,6 +45,9 @@ public:
     // 成功返回 token，失败返回空字符串
     std::string Login(const std::string& username, const std::string& password);
 
+    // 管理员内部登录（无需密码，供 Executor 内部创建用户使用）
+    std::string AdminLogin();
+
     // 验证 Token
     // 返回用户信息，无效返回 nullptr
     const User* ValidateToken(const std::string& token);

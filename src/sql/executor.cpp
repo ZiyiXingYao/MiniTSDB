@@ -59,7 +59,9 @@ QueryResult Executor::ExecuteInsert(const InsertStmt& stmt) {
         bool has_value = false;
 
         for (size_t i = 0; i < stmt.columns.size() && i < row.values.size(); i++) {
-            const auto& col = stmt.columns[i];
+            std::string col = stmt.columns[i];
+            // 列名大小写不敏感
+            for (auto& c : col) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             const auto& val = row.values[i];
 
             if (col == "tag") {
@@ -220,7 +222,14 @@ QueryResult Executor::ExecuteSelectAggregate(const SelectStmt& stmt) {
     for (const auto& ar : agg_results) {
         std::vector<std::string> row;
         row.push_back(FormatTimestamp(ar.bucket_ts));
-        row.push_back(std::to_string(ar.avg));
+        switch (agg_type) {
+            case AggType::AVG:   row.push_back(std::to_string(ar.avg)); break;
+            case AggType::MAX:   row.push_back(std::to_string(ar.max)); break;
+            case AggType::MIN:   row.push_back(std::to_string(ar.min)); break;
+            case AggType::SUM:   row.push_back(std::to_string(ar.sum)); break;
+            case AggType::COUNT: row.push_back(std::to_string(ar.cnt)); break;
+            default:             row.push_back(std::to_string(ar.avg)); break;
+        }
         result.rows.push_back(std::move(row));
     }
 
@@ -303,8 +312,8 @@ QueryResult Executor::ExecuteCreateUser(const CreateUserStmt& stmt) {
     if (role_lower == "admin") role = UserRole::ADMIN;
     else if (role_lower == "operator") role = UserRole::OPERATOR;
 
-    // 使用 admin token 创建用户（内部操作）
-    std::string admin_token = auth_->Login("admin", "admin123");
+    // 使用 admin 内部登录创建用户（无需硬编码密码）
+    std::string admin_token = auth_->AdminLogin();
     if (!auth_->CreateUser(admin_token, stmt.username, stmt.password, role)) {
         return {false, "Failed to create user (may already exist)", {}, {}, 0};
     }

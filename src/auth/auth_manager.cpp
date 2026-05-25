@@ -170,6 +170,24 @@ std::string AuthManager::Login(const std::string& username,
     return token.token;
 }
 
+std::string AuthManager::AdminLogin() {
+    auto it = users_.find("admin");
+    if (it == users_.end() || !it->second.active) return "";
+
+    CleanupExpiredTokens();
+
+    SessionToken token;
+    token.token = GenerateToken();
+    token.username = "admin";
+    token.role = UserRole::ADMIN;
+    token.expires_at = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count()
+        + token_expiry_sec_;
+
+    tokens_[token.token] = token;
+    return token.token;
+}
+
 const User* AuthManager::ValidateToken(const std::string& token) {
     CleanupExpiredTokens();
 
