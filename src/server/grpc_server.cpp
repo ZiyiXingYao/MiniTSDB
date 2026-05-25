@@ -1,5 +1,6 @@
 #include "server/grpc_server.h"
 #include "sql/executor.h"
+#include "snapshot/snapshot_store.h"
 #include "common/logger.h"
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/server_builder.h>
@@ -142,6 +143,71 @@ public:
             oss << result.affected_rows << " rows affected";
             response->set_result(oss.str());
         }
+        return Status::OK;
+    }
+
+    Status Snapshot(ServerContext* context, const SnapshotRequest* request,
+                    SnapshotResponse* response) override {
+        LOG_DEBUG("Snapshot RPC: type={}", request->type());
+
+        // 权限检查
+        if (auth_) {
+            auto role = auth_->ValidateToken(request->token());
+            if (!role.has_value()) {
+                response->set_ok(false);
+                response->set_error("Unauthorized");
+                return Status::OK;
+            }
+        }
+
+        auto* snapshot = engine_->GetSnapshotStore();
+        if (!snapshot) {
+            response->set_ok(false);
+            response->set_error("Snapshot not available");
+            return Status::OK;
+        }
+
+        switch (request->type()) {
+            case SnapshotQueryType::GET: {
+                CachedSnapshot entry;
+                if (snapshot->Get(request->tag(), entry)) {
+                    auto* pb = response->add_entries();
+                    pb->set_tag(entry.tag);
+                    pb->set_timestamp(entry.timestamp);
+                    pb->set_value(entry.value);
+                    pb->set_valid(entry.valid);
+                }
+                break;
+            }
+            case SnapshotQueryType::GET_MANY: {
+                auto entries = snapshot->GetByPattern(request->pattern());
+                for (const auto& e : entries) {
+                    auto* pb = response->add_entries();
+                    pb->set_tag(e.tag);
+                    pb->set_timestamp(e.timestamp);
+                    pb->set_value(e.value);
+                    pb->set_valid(e.valid);
+                }
+                break;
+            }
+            case SnapshotQueryType::GET_ALL: {
+                auto entries = snapshot->GetAll();
+                for (const auto& e : entries) {
+                    auto* pb = response->add_entries();
+                    pb->set_tag(e.tag);
+                    pb->set_timestamp(e.timestamp);
+                    pb->set_value(e.value);
+                    pb->set_valid(e.valid);
+                }
+                break;
+            }
+            case SnapshotQueryType::COUNT: {
+                response->set_count(static_cast<int64_t>(snapshot->Count()));
+                break;
+            }
+        }
+        response->set_ok(true);
+        LOG_DEBUG("Snapshot RPC OK: {} entries", response->entries_size());
         return Status::OK;
     }
 
