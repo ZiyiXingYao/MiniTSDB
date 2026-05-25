@@ -227,7 +227,7 @@ QueryResult Executor::ExecuteSelectAggregate(const SelectStmt& stmt) {
             case AggType::MAX:   row.push_back(std::to_string(ar.max)); break;
             case AggType::MIN:   row.push_back(std::to_string(ar.min)); break;
             case AggType::SUM:   row.push_back(std::to_string(ar.sum)); break;
-            case AggType::COUNT: row.push_back(std::to_string(ar.cnt)); break;
+            case AggType::COUNT: row.push_back(std::to_string(ar.count)); break;
             default:             row.push_back(std::to_string(ar.avg)); break;
         }
         result.rows.push_back(std::move(row));

@@ -1,6 +1,8 @@
 #ifndef MINITSDB_C_SDK_H
 #define MINITSDB_C_SDK_H
 
+#include <stdint.h>
+
 #ifdef _WIN32
     #ifdef MINITSDB_SDK_BUILD
         #define MINITSDB_API __declspec(dllexport)

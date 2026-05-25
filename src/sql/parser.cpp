@@ -8,6 +8,9 @@
 
 namespace minitsdb {
 
+// 前向声明
+Timestamp ParseTimeString(const std::string& s);
+
 namespace {
 
 // 工具函数：去除首尾空白
@@ -576,7 +579,7 @@ ParseResult SQLParser::ParseAlterSystem(const std::string& sql) {
 
 // 解析时间字符串（ISO 8601 格式）为毫秒时间戳
 // 支持格式: "2026-05-23", "2026-05-23T10:30:00Z", "2026-05-23 10:30:00"
-static Timestamp ParseTimeString(const std::string& s) {
+Timestamp ParseTimeString(const std::string& s) {
     if (s.empty()) return 0;
     std::tm tm = {};
     int ms = 0;
@@ -604,32 +607,6 @@ static Timestamp ParseTimeString(const std::string& s) {
     auto epoch = std::mktime(&tm);
     if (epoch == -1) return 0;
     return static_cast<Timestamp>(epoch) * 1000 + ms;
-}
-    size_t p = between_pos + 7;
-    auto start_quote = clause.find('\'', p);
-    if (start_quote != std::string::npos) {
-        range.start = std::stoll(clause.substr(start_quote + 1));
-    }
-
-    auto and_pos = FindKeyword(clause, "AND", p);
-    if (and_pos != std::string::npos) {
-        auto end_quote = clause.find('\'', and_pos);
-        if (end_quote != std::string::npos) {
-            range.end = std::stoll(clause.substr(end_quote + 1));
-        }
-    }
-
-    return range;
-}
-
-std::pair<AggType, std::string> SQLParser::ParseAggFunction(const std::string& expr) {
-    std::string upper = ToUpper(expr);
-    if (upper.find("AVG") == 0) return {AggType::AVG, expr};
-    if (upper.find("MAX") == 0) return {AggType::MAX, expr};
-    if (upper.find("MIN") == 0) return {AggType::MIN, expr};
-    if (upper.find("SUM") == 0) return {AggType::SUM, expr};
-    if (upper.find("COUNT") == 0) return {AggType::COUNT, expr};
-    return {AggType::NONE, expr};
 }
 
 } // namespace minitsdb

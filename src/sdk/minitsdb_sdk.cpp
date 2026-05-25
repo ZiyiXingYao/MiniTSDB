@@ -26,9 +26,8 @@ struct minitsdb_result {
 };
 
 // ============================================================
-//  连接管理 (extern "C" for C SDK consumers)
+//  连接管理
 // ============================================================
-extern "C" {
 minitsdb_conn* minitsdb_connect(const char* host, int port,
                                  const char* user, const char* password) {
     auto conn = new minitsdb_conn();
@@ -155,4 +154,3 @@ int minitsdb_insert(minitsdb_conn* conn, const char* tag,
     }
     return static_cast<int>(pb_res.count());
 }
-} // extern "C"

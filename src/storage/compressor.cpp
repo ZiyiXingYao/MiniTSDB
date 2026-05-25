@@ -120,8 +120,26 @@ ValueEncoder::ValueEncoder() = default;
 
 uint64_t ValueEncoder::DoubleToBits(double d) { uint64_t b; std::memcpy(&b, &d, sizeof(b)); return b; }
 double ValueEncoder::BitsToDouble(uint64_t b) { double d; std::memcpy(&d, &b, sizeof(d)); return d; }
-int ValueEncoder::LeadingZeros(uint64_t x) { return (x == 0) ? 64 : __builtin_clzll(x); }
-int ValueEncoder::TrailingZeros(uint64_t x) { return (x == 0) ? 64 : __builtin_ctzll(x); }
+int ValueEncoder::LeadingZeros(uint64_t x) {
+    if (x == 0) return 64;
+#if defined(_MSC_VER)
+    unsigned long idx;
+    _BitScanReverse64(&idx, x);
+    return static_cast<int>(63 - idx);
+#else
+    return __builtin_clzll(x);
+#endif
+}
+int ValueEncoder::TrailingZeros(uint64_t x) {
+    if (x == 0) return 64;
+#if defined(_MSC_VER)
+    unsigned long idx;
+    _BitScanForward64(&idx, x);
+    return static_cast<int>(idx);
+#else
+    return __builtin_ctzll(x);
+#endif
+}
 
 void ValueEncoder::WriteBit(uint8_t bit) {
   AppendBitToBuffer(&buffer_, bit, write_byte_pos_, write_bit_pos_);
