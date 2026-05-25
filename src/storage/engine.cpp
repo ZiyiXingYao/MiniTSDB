@@ -55,8 +55,9 @@ bool StorageEngine::Init() {
         auto date_str = GetCurrentDateStr();
         std::string tag_dir = config_.hot_path + "/tags/" + tag;
         os::fs::CreateDirectories(tag_dir);
+        auto ts_str = std::to_string(points.front().ts);
         auto sstable = std::make_unique<SSTableWriter>(
-            tag_dir + "/" + date_str + ".sst");
+            tag_dir + "/" + date_str + "_" + ts_str + ".sst");
         if (sstable->Open()) {
             BlockCompressor compressor;
             auto block = compressor.Compress(points);
@@ -75,7 +76,7 @@ bool StorageEngine::Init() {
         LOG_INFO("WAL opened at {}/wal/wal.log", config_.hot_path);
     }
 
-    // WAL 恢复：从 WAL 回放未刷盘的数据
+    // WAL 恢复：从 WAL 回放未刷盘的数据（不截断，截断在 Flush 后执行）
     {
         std::string wal_path = config_.hot_path + "/wal/wal.log";
         if (os::fs::Exists(wal_path)) {
@@ -92,7 +93,8 @@ bool StorageEngine::Init() {
                 }
                 LOG_INFO("WAL recovery: {} entries replayed", entries.size());
                 reader.Close();
-                WalReader::Truncate(wal_path);
+                // 不在这里 truncate WAL — 延迟到 Flush() 成功后执行
+                // 避免 Init → truncate → crash 时丢失恢复的数据
             }
         }
     }
@@ -115,9 +117,10 @@ bool StorageEngine::Init() {
 bool StorageEngine::Write(const std::string& tag, const DataPoint& point) {
     if (!initialized_) return false;
 
-    // 写入 WAL
+    // 写入 WAL 并立即刷盘确保持久化
     if (wal_) {
         wal_->AppendWrite(tag, point);
+        wal_->Flush();
     }
 
     // 写入 MemTable
@@ -259,6 +262,11 @@ DataPoint StorageEngine::ReadLatest(const std::string& tag) {
 void StorageEngine::Flush() {
     if (mem_table_) {
         mem_table_->FlushAll();
+        // 数据已刷入 SSTable 后，截断 WAL
+        if (wal_) {
+            WalReader::Truncate(wal_->Path());
+            LOG_DEBUG("WAL truncated after flush");
+        }
         LOG_DEBUG("StorageEngine flush completed");
     }
 }

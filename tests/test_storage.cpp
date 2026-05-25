@@ -6,11 +6,7 @@
 #include "storage/wal.h"
 #include "common/os/file.h"
 #include "common/os/fs.h"
-#include "common/config.h"
 #include <cstdio>
-#include <chrono>
-
-using namespace minitsdb;
 
 using namespace minitsdb;
 
@@ -307,6 +303,6 @@ TEST_F(EngineTest, WALRecoveryAfterRestart) {
         ASSERT_TRUE(found_sst) << "No SSTable created after WAL recovery + Flush";
 
         auto points = engine.ReadRaw("recovery-tag", TimeRange{0, Timestamp(1000000)});
-        EXPECT_GE(points.size(), 1) << "No data recovered from WAL";
+        EXPECT_EQ(points.size(), 2) << "Expected 2 data points recovered from WAL";
     }
 }
