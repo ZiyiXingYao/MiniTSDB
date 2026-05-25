@@ -421,7 +421,13 @@ std::string Executor::FormatTimestamp(Timestamp ts) {
     std::time_t t = static_cast<std::time_t>(sec);
 
     char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::gmtime(&t));
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
 
     std::ostringstream oss;
     oss << buf << "." << std::setfill('0') << std::setw(3) << ms;

@@ -173,7 +173,11 @@ bool StorageEngine::RegisterTag(const TagMeta& meta) {
 }
 
 TagMeta StorageEngine::GetTagMeta(const std::string& tag_name) {
-    return TagMeta{tag_name};
+    TagMeta meta;
+    meta.name = tag_name;
+    meta.description = "";
+    meta.unit = "";
+    return meta;
 }
 
 std::vector<DataPoint> StorageEngine::ReadRaw(const std::string& tag,

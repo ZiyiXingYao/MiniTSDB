@@ -300,7 +300,6 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
         auto ParseWhereCondition = [&](const std::string& clause) {
             auto& w = stmt.where;
             auto eq = clause.find('=');
-            auto in_kw = FindKeyword(clause, "IN");
             auto like_kw = FindKeyword(clause, "LIKE");
             auto between_pos = FindKeyword(clause, "BETWEEN");
 
@@ -308,7 +307,6 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
                 // ts BETWEEN 'start' AND 'end'
                 auto p = between_pos + 7;
                 SkipWhitespace(clause, p);
-                size_t start_pos = p;
                 while (p < clause.size() && clause[p] != '\'' && clause[p] != '"')
                     p++;
                 std::string ts_start, ts_end;
