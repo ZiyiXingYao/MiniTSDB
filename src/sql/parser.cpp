@@ -1,7 +1,10 @@
 #include "sql/parser.h"
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <sstream>
+#include <ctime>
+#include <iomanip>
 
 namespace minitsdb {
 
@@ -236,10 +239,15 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
         }
 
         // 检查聚合函数
-        for (const auto& agg : {"AVG", "MAX", "MIN", "SUM", "COUNT"}) {
-            if (FindKeyword(col, agg) != std::string::npos) {
+        for (const auto& agg_name : {"AVG", "MAX", "MIN", "SUM", "COUNT"}) {
+            if (FindKeyword(col, agg_name) != std::string::npos) {
                 expr.is_aggregate = true;
                 expr.expr = col;
+                if (std::strcmp(agg_name, "AVG") == 0) expr.agg_type = AggType::AVG;
+                else if (std::strcmp(agg_name, "MAX") == 0) expr.agg_type = AggType::MAX;
+                else if (std::strcmp(agg_name, "MIN") == 0) expr.agg_type = AggType::MIN;
+                else if (std::strcmp(agg_name, "SUM") == 0) expr.agg_type = AggType::SUM;
+                else if (std::strcmp(agg_name, "COUNT") == 0) expr.agg_type = AggType::COUNT;
                 break;
             }
         }
@@ -266,6 +274,7 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
         stmt.table_name = Trim(sql.substr(pos, latest_pos - pos));
     } else {
         stmt.table_name = Trim(sql.substr(pos));
+        *result = stmt;
         return {true, "", result};  // SELECT ... FROM table (no WHERE)
     }
 
@@ -302,6 +311,7 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
                         ts_end = ExtractQuoted(clause, p);
                     }
                 }
+                w.time_range = {ParseTimeString(ts_start), ParseTimeString(ts_end)};
             }
 
             if (eq != std::string::npos) {
@@ -564,12 +574,37 @@ ParseResult SQLParser::ParseAlterSystem(const std::string& sql) {
     return {true, "", result};
 }
 
-TimeRange SQLParser::ParseTimeRange(const std::string& clause) {
-    TimeRange range;
-    // 简单实现：从 'ts BETWEEN 'a' AND 'b'' 中提取
-    auto between_pos = FindKeyword(clause, "BETWEEN");
-    if (between_pos == std::string::npos) return range;
-
+// 解析时间字符串（ISO 8601 格式）为毫秒时间戳
+// 支持格式: "2026-05-23", "2026-05-23T10:30:00Z", "2026-05-23 10:30:00"
+static Timestamp ParseTimeString(const std::string& s) {
+    if (s.empty()) return 0;
+    std::tm tm = {};
+    int ms = 0;
+    std::istringstream iss(s);
+    // 尝试 "YYYY-MM-DDTHH:MM:SSZ" 或 "YYYY-MM-DD HH:MM:SS"
+    if (s.find('T') != std::string::npos || s.find(' ') != std::string::npos) {
+        char sep = (s.find('T') != std::string::npos) ? 'T' : ' ';
+        iss >> std::get_time(&tm, "%Y-%m-%d");
+        // 跳过 T 或空格
+        if (iss && iss.peek() == sep) iss.get();
+        if (iss) {
+            int h, m, sec;
+            char colon;
+            iss >> h >> colon >> m >> colon >> sec;
+            tm.tm_hour = h;
+            tm.tm_min = m;
+            tm.tm_sec = sec;
+        }
+    } else {
+        // 仅 "YYYY-MM-DD"
+        iss >> std::get_time(&tm, "%Y-%m-%d");
+    }
+    tm.tm_year -= 1900;
+    tm.tm_mon -= 1;
+    auto epoch = std::mktime(&tm);
+    if (epoch == -1) return 0;
+    return static_cast<Timestamp>(epoch) * 1000 + ms;
+}
     size_t p = between_pos + 7;
     auto start_quote = clause.find('\'', p);
     if (start_quote != std::string::npos) {

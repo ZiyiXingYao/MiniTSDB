@@ -32,9 +32,6 @@ private:
     ParseResult ParseAlterSystem(const std::string& sql);
     ParseResult ParseCreateUser(const std::string& sql);
 
-    // 解析时间范围
-    TimeRange ParseTimeRange(const std::string& clause);
-
     // 解析聚合函数
     std::pair<AggType, std::string> ParseAggFunction(const std::string& expr);
 };
