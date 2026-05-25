@@ -7,8 +7,25 @@
 #include "common/os/fs.h"
 #include <algorithm>
 #include <unordered_map>
+#include <ctime>
+#include <sstream>
+#include <iomanip>
 
 namespace minitsdb {
+
+// 获取当前日期字符串 YYYY-MM-DD
+static std::string GetCurrentDateStr() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%d");
+    return oss.str();
+}
 
 StorageEngine::StorageEngine(const StorageConfig& config)
     : config_(config) {}
@@ -22,6 +39,7 @@ bool StorageEngine::Init() {
     try {
         os::fs::CreateDirectories(config_.hot_path + "/meta");
         os::fs::CreateDirectories(config_.hot_path + "/tags");
+        os::fs::CreateDirectories(config_.hot_path + "/wal");
         os::fs::CreateDirectories(config_.cold_path);
     } catch (...) {
         return false;
@@ -30,12 +48,53 @@ bool StorageEngine::Init() {
     // 初始化 MemTable
     mem_table_ = std::make_unique<MemTable>(config_.memtable_size);
 
+    // 设置 flush 回调：MemTable 触发刷盘时写入 SSTable
+    mem_table_->SetFlushCallback([this](const std::string& tag,
+                                         std::vector<DataPoint>&& points) {
+        if (points.empty()) return;
+        auto date_str = GetCurrentDateStr();
+        std::string tag_dir = config_.hot_path + "/tags/" + tag;
+        os::fs::CreateDirectories(tag_dir);
+        auto sstable = std::make_unique<SSTableWriter>(
+            tag_dir + "/" + date_str + ".sst");
+        if (sstable->Open()) {
+            BlockCompressor compressor;
+            auto block = compressor.Compress(points);
+            sstable->AddBlock(block);
+            sstable->Close();
+            LOG_DEBUG("Flushed {} points for tag '{}' to SSTable",
+                      points.size(), tag);
+        }
+    });
+
     // 初始化 WAL
     wal_ = std::make_unique<WalWriter>(config_.hot_path + "/wal/wal.log");
     if (!wal_->Open()) {
         LOG_INFO("WAL not found, creating new at {}/wal/wal.log", config_.hot_path);
     } else {
         LOG_INFO("WAL opened at {}/wal/wal.log", config_.hot_path);
+    }
+
+    // WAL 恢复：从 WAL 回放未刷盘的数据
+    {
+        std::string wal_path = config_.hot_path + "/wal/wal.log";
+        if (os::fs::Exists(wal_path)) {
+            WalReader reader(wal_path);
+            if (reader.Open()) {
+                const auto& entries = reader.Entries();
+                for (const auto& entry : entries) {
+                    if (entry.type == WalEntryType::DATA_POINT &&
+                        !entry.points.empty()) {
+                        for (const auto& p : entry.points) {
+                            mem_table_->Add(entry.tag_name, p);
+                        }
+                    }
+                }
+                LOG_INFO("WAL recovery: {} entries replayed", entries.size());
+                reader.Close();
+                WalReader::Truncate(wal_path);
+            }
+        }
     }
 
     // 初始化 LatestCache

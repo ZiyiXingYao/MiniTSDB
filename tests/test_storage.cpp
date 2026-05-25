@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
+#include "storage/engine.h"
 #include "storage/sstable.h"
 #include "storage/compaction.h"
 #include "storage/compressor.h"
 #include "storage/wal.h"
 #include "common/os/file.h"
 #include "common/os/fs.h"
+#include "common/config.h"
 #include <cstdio>
+#include <chrono>
+
+using namespace minitsdb;
 
 using namespace minitsdb;
 
@@ -185,4 +190,123 @@ TEST_F(StorageTest, WALTruncate) {
     EXPECT_TRUE(WalReader::Truncate(wal_path));
     WalReader reader(wal_path);
     EXPECT_FALSE(reader.Open());
+}
+
+// ============================================================
+//  StorageEngine 集成测试
+// ============================================================
+
+class EngineTest : public ::testing::Test {
+protected:
+    std::string test_dir_ = "./test_engine_data";
+
+    void SetUp() override {
+        os::fs::RemoveAll(test_dir_);
+    }
+
+    void TearDown() override {
+        os::fs::RemoveAll(test_dir_);
+    }
+};
+
+TEST_F(EngineTest, WALDirectoryCreated) {
+    StorageConfig cfg;
+    cfg.hot_path = test_dir_ + "/data/hot";
+    cfg.cold_path = test_dir_ + "/data/cold";
+
+    StorageEngine engine(cfg);
+    ASSERT_TRUE(engine.Init());
+
+    EXPECT_TRUE(os::fs::Exists(test_dir_ + "/data/hot/wal"));
+}
+
+TEST_F(EngineTest, WriteAndFlushCreatesSSTable) {
+    StorageConfig cfg;
+    cfg.hot_path = test_dir_ + "/data/hot";
+    cfg.cold_path = test_dir_ + "/data/cold";
+    cfg.memtable_size = 100;  // 小阈值，快速触发 flush
+
+    StorageEngine engine(cfg);
+    ASSERT_TRUE(engine.Init());
+
+    // 写入足够数据触发 flush
+    for (int i = 0; i < 500; i++) {
+        DataPoint p;
+        p.ts = static_cast<Timestamp>(i) * 1000;
+        p.value = static_cast<double>(i);
+        engine.Write("test-tag", p);
+    }
+
+    engine.Flush();
+
+    // 验证 SSTable 文件存在
+    std::string tag_dir = test_dir_ + "/data/hot/tags/test-tag";
+    ASSERT_TRUE(os::fs::Exists(tag_dir));
+    std::vector<os::fs::DirEntry> entries;
+    ASSERT_TRUE(os::fs::ListDirectory(tag_dir, entries));
+    bool found_sst = false;
+    for (const auto& e : entries) {
+        if (e.name.size() > 4 && e.name.substr(e.name.size() - 4) == ".sst") {
+            found_sst = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_sst) << "No .sst file found after flush";
+
+    // 验证写入的数据可以读回
+    auto points = engine.ReadRaw("test-tag", TimeRange{0, Timestamp(1000000)});
+    EXPECT_GT(points.size(), 0);
+}
+
+TEST_F(EngineTest, WALRecoveryAfterRestart) {
+    StorageConfig cfg;
+    cfg.hot_path = test_dir_ + "/data/hot";
+    cfg.cold_path = test_dir_ + "/data/cold";
+    cfg.memtable_size = 64 * 1024;  // 大阈值，不触发自动刷盘
+
+    // 第一次运行：写入数据，不 Flush（数据仅在 WAL 和 MemTable 中）
+    {
+        StorageEngine engine(cfg);
+        ASSERT_TRUE(engine.Init());
+
+        DataPoint p1; p1.ts = 1000; p1.value = 42.5;
+        engine.Write("recovery-tag", p1);
+
+        DataPoint p2; p2.ts = 2000; p2.value = 43.5;
+        engine.Write("recovery-tag", p2);
+
+        // ~StorageEngine 调用 Close() → Flush() 将 MemTable 刷入 SSTable
+    }
+
+    // 删除 SSTable，模拟磁盘数据丢失
+    os::fs::RemoveAll(test_dir_ + "/data/hot/tags");
+
+    // 验证 WAL 文件存在
+    ASSERT_TRUE(os::fs::Exists(test_dir_ + "/data/hot/wal/wal.log"));
+
+    // 第二次运行：WAL 恢复
+    {
+        StorageEngine engine(cfg);
+        ASSERT_TRUE(engine.Init());  // WAL 恢复在此发生
+
+        // Flush 将恢复的 MemTable 数据写入 SSTable
+        engine.Flush();
+
+        // 读取应找到恢复的数据
+        std::string tag_dir = test_dir_ + "/data/hot/tags/recovery-tag";
+        ASSERT_TRUE(os::fs::Exists(tag_dir));
+        std::vector<os::fs::DirEntry> entries;
+        ASSERT_TRUE(os::fs::ListDirectory(tag_dir, entries));
+        bool found_sst = false;
+        for (const auto& e : entries) {
+            if (e.name.size() > 4 && e.name.substr(e.name.size() - 4) == ".sst") {
+                found_sst = true;
+                break;
+            }
+        }
+        ASSERT_TRUE(found_sst) << "No SSTable created after WAL recovery + Flush";
+
+        auto points = engine.ReadRaw("recovery-tag", TimeRange{0, Timestamp(1000000)});
+        EXPECT_GE(points.size(), 1) << "No data recovered from WAL";
+    }
 }
