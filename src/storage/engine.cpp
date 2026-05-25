@@ -107,6 +107,11 @@ bool StorageEngine::Init() {
     alarm_engine_ = std::make_unique<AlarmEngine>();
     LOG_DEBUG("AlarmEngine initialized");
 
+    // 初始化快照存储
+    snapshot_store_ = std::make_unique<SnapshotStore>();
+    snapshot_store_->Init(config_.hot_path + "/snapshot");
+    LOG_DEBUG("SnapshotStore initialized");
+
     initialized_ = true;
     LOG_INFO("StorageEngine initialized (hot={}, cold={}, retention={}d/{})",
              config_.hot_path, config_.cold_path,
@@ -136,6 +141,11 @@ bool StorageEngine::Write(const std::string& tag, const DataPoint& point) {
     // 报警检查
     if (alarm_engine_) {
         alarm_engine_->Evaluate(tag, point);
+    }
+
+    // 更新快照存储
+    if (snapshot_store_) {
+        snapshot_store_->OnWrite(tag, point);
     }
 
     LOG_DEBUG("Written tag={} ts={} value={}", tag, point.ts,
@@ -275,6 +285,13 @@ void StorageEngine::Close() {
     if (initialized_) {
         LOG_INFO("StorageEngine shutting down...");
         Flush();
+
+        // 关闭快照存储
+        if (snapshot_store_) {
+            snapshot_store_->Shutdown();
+            LOG_DEBUG("SnapshotStore shut down");
+        }
+
         if (wal_) {
             wal_->Close();
             LOG_DEBUG("WAL closed");

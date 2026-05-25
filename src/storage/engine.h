@@ -5,6 +5,7 @@
 #include "storage/wal.h"
 #include "cache/latest_cache.h"
 #include "alarm/alarm_engine.h"
+#include "snapshot/snapshot_store.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -66,6 +67,9 @@ public:
     // 获取报警引擎
     AlarmEngine* GetAlarmEngine() { return alarm_engine_.get(); }
 
+    // 获取快照存储
+    SnapshotStore* GetSnapshotStore() { return snapshot_store_.get(); }
+
     // 关闭
     void Close();
 
@@ -75,6 +79,7 @@ private:
     std::unique_ptr<WalWriter> wal_;
     std::shared_ptr<LatestCache> latest_cache_;
     std::unique_ptr<AlarmEngine> alarm_engine_;
+    std::unique_ptr<SnapshotStore> snapshot_store_;
     bool initialized_ = false;
 };
 
