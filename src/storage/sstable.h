@@ -60,8 +60,6 @@ private:
     bool opened_ = false;
     std::string tag_name_;
     TimeRange range_{INT64_MAX, 0};
-
-
 };
 
 // SSTable 读取器
