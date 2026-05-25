@@ -1,0 +1,15 @@
+syntax = "proto3";
+package minitsdb;
+
+message SnapshotFile {
+    int64 save_time = 1;
+    int64 version = 2;
+    repeated SnapshotEntry entries = 3;
+}
+
+message SnapshotEntry {
+    string tag = 1;
+    int64 timestamp = 2;
+    double value = 3;
+    bool has_value = 4;
+}

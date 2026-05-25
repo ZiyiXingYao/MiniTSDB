@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package minitsdb;
 
+import "snapshot.proto";
+
 // MiniTSDB 时序数据库 gRPC 服务
 service MiniTSDB {
     // 执行 SQL 查询
@@ -15,6 +17,9 @@ service MiniTSDB {
     
     // 管理命令
     rpc Admin(AdminRequest) returns (AdminResponse);
+    
+    // 快照查询（实时值）
+    rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 }
 
 // ---------- 查询 ----------
@@ -75,4 +80,26 @@ message AdminResponse {
     bool ok = 1;
     string error = 2;
     string result = 3;
+}
+
+// ---------- 快照 ----------
+enum SnapshotQueryType {
+    GET = 0;
+    GET_MANY = 1;
+    GET_ALL = 2;
+    COUNT = 3;
+}
+
+message SnapshotRequest {
+    string token = 1;
+    SnapshotQueryType type = 2;
+    string tag = 3;
+    string pattern = 4;
+}
+
+message SnapshotResponse {
+    bool ok = 1;
+    string error = 2;
+    int64 count = 3;
+    repeated SnapshotEntry entries = 4;
 }
