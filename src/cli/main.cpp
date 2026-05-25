@@ -6,6 +6,7 @@
 #include <grpcpp/grpcpp.h>
 #include "common/os/file.h"
 #include "proto_gen/minitsdb.grpc.pb.h"
+#include "proto_gen/snapshot.pb.h"
 
 using namespace minitsdb;
 
@@ -86,6 +87,12 @@ public:
         req.set_token(token_);
         grpc::ClientContext ctx;
         auto status = stub_->Query(&ctx, req, &res);
+        return status.ok() && res.ok();
+    }
+
+    bool SnapshotQuery(const SnapshotRequest& req, SnapshotResponse& res) {
+        grpc::ClientContext ctx;
+        auto status = stub_->Snapshot(&ctx, req, &res);
         return status.ok() && res.ok();
     }
 
@@ -243,6 +250,81 @@ bool ExecuteSQL(GrpcClient& client, const std::string& sql,
 int main(int argc, char* argv[]) {
     auto opts = ParseArgs(argc, argv);
 
+    // 检查是否 LATEST 子命令
+    std::string first_arg = (argc > 1) ? argv[1] : "";
+    for (auto& c : first_arg) c = static_cast<char>(std::toupper(c));
+
+    if (first_arg == "LATEST" || first_arg == "SNAPSHOT") {
+        GrpcClient client(opts.host, opts.port);
+        if (!client.Login(opts.user, opts.password)) {
+            std::cerr << "ERROR: Login failed for user '" << opts.user
+                      << "'@" << opts.host << ":" << opts.port << "\n";
+            return 1;
+        }
+
+        std::string tag, pattern;
+        bool query_all = false;
+        std::string out_format = "table";
+
+        for (int i = 2; i < argc; i++) {
+            std::string arg = argv[i];
+            if (arg == "--all") query_all = true;
+            else if (arg == "--pattern" && i + 1 < argc) pattern = argv[++i];
+            else if (arg == "--format" && i + 1 < argc) out_format = argv[++i];
+            else if (!arg.empty() && arg[0] != '-') tag = arg;
+        }
+
+        if (tag.empty() && pattern.empty() && !query_all) {
+            std::cerr << "Usage: minitsdb_cli LATEST <tag> | --pattern <pattern> | --all [--format table|json]\n";
+            return 1;
+        }
+
+        SnapshotRequest req;
+        req.set_token(client.Token());
+        if (!tag.empty()) {
+            req.set_type(SnapshotQueryType::GET);
+            req.set_tag(tag);
+        } else if (!pattern.empty()) {
+            req.set_type(SnapshotQueryType::GET_MANY);
+            req.set_pattern(pattern);
+        } else {
+            req.set_type(SnapshotQueryType::GET_ALL);
+        }
+
+        SnapshotResponse res;
+        if (!client.SnapshotQuery(req, res)) {
+            std::cerr << "RPC failed\n";
+            return 1;
+        }
+        if (!res.ok()) {
+            std::cerr << "Error: " << res.error() << "\n";
+            return 1;
+        }
+
+        // Output
+        if (out_format == "json") {
+            std::cout << "[\n";
+            for (int i = 0; i < res.entries_size(); i++) {
+                const auto& e = res.entries(i);
+                std::cout << "  {\"tag\":\"" << EscapeJSON(e.tag()) << "\","
+                          << "\"value\":" << e.value() << ","
+                          << "\"ts\":" << e.timestamp() << "}";
+                if (i < res.entries_size() - 1) std::cout << ",";
+                std::cout << "\n";
+            }
+            std::cout << "]\n";
+        } else {
+            printf("%-20s %-15s %s\n", "TAG", "VALUE", "TIMESTAMP");
+            for (int i = 0; i < res.entries_size(); i++) {
+                const auto& e = res.entries(i);
+                printf("%-20s %-15.3f %ld\n", e.tag().c_str(), e.value(), static_cast<long>(e.timestamp()));
+            }
+            std::cout << "(" << res.entries_size() << " rows)\n";
+        }
+        return 0;
+    }
+
+    // 普通模式：登录
     GrpcClient client(opts.host, opts.port);
     if (!client.Login(opts.user, opts.password)) {
         std::cerr << "ERROR: Login failed for user '" << opts.user

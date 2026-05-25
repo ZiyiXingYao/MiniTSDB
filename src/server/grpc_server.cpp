@@ -153,7 +153,7 @@ public:
         // 权限检查
         if (auth_) {
             auto role = auth_->ValidateToken(request->token());
-            if (!role.has_value()) {
+            if (!role) {
                 response->set_ok(false);
                 response->set_error("Unauthorized");
                 return Status::OK;
