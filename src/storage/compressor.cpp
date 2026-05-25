@@ -45,6 +45,9 @@ void TimestampCompressor::Encode(Timestamp ts) {
     AppendBitsToBuffer(&buffer_, 0b0111, 4, bp, bitp);
     AppendBitsToBuffer(&buffer_, static_cast<uint64_t>(delta_delta + 2047), 12, bp, bitp);
   } else {
+    // Note: overflow uses 32-bit encoding (not standard Gorilla 64-bit).
+    // This limits the max delta-delta to ±INT32_MAX (~24 days).
+    // Acceptable for typical time-series blocks (< 1 hour range).
     AppendBitsToBuffer(&buffer_, 0b1111, 4, bp, bitp);
     AppendBitsToBuffer(&buffer_, static_cast<uint64_t>(delta_delta), 32, bp, bitp);
   }

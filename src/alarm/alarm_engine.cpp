@@ -72,11 +72,10 @@ void AlarmEngine::Evaluate(const std::string& tag, const DataPoint& point) {
             event.value = val;
             event.ts = point.ts;
             event.condition = rule.condition;
-            events_.push_back(event);
 
-            // 限制 events_ 大小，最多保留 10000 条
-            if (events_.size() > 10000) {
-                events_.erase(events_.begin(), events_.begin() + (events_.size() - 10000));
+            // 限制 events_ 大小，最多 10000 条
+            if (events_.size() < 10000) {
+                events_.push_back(event);
             }
 
             if (on_alarm_) {

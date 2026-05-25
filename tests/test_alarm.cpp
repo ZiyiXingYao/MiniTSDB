@@ -98,3 +98,22 @@ TEST(AlarmEngineTest, QueryEvents) {
     EXPECT_EQ(events.size(), 1);
     EXPECT_EQ(events[0].ts, 100);
 }
+
+TEST(AlarmEngineTest, MaxEventsNotExceeded) {
+    AlarmEngine engine;
+    AlarmRule rule;
+    rule.name = "test";
+    rule.tag_name = "test-tag";
+    rule.condition = "value > 0";
+    rule.actions = {};
+    ASSERT_TRUE(engine.AddRule(rule));
+
+    for (int i = 0; i < 20000; i++) {
+        DataPoint dp;
+        dp.ts = static_cast<int64_t>(i) * 1000;
+        dp.value = 1.0;
+        engine.Evaluate("test-tag", dp);
+    }
+
+    EXPECT_LE(engine.EventCount(), 10000u);
+}
