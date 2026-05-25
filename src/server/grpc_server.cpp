@@ -195,14 +195,16 @@ bool GrpcServer::Start() {
 void GrpcServer::Stop() {
     if (running_.exchange(false)) {
         if (server_) {
-            static_cast<Server*>(server_)->Shutdown();
-            server_ = nullptr;
+            auto* srv = static_cast<Server*>(server_);
+            srv->Shutdown();
         }
-        delete static_cast<MiniTSDB::Service*>(service_);
-        service_ = nullptr;
         if (server_thread_.joinable()) {
             server_thread_.join();
         }
+        delete static_cast<MiniTSDB::Service*>(service_);
+        service_ = nullptr;
+        delete static_cast<Server*>(server_);
+        server_ = nullptr;
     }
 }
 
