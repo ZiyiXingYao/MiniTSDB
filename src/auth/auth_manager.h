@@ -72,6 +72,9 @@ public:
     // 生成随机 salt（32 字符 hex）
     static std::string GenerateSalt();
 
+    // SHA-256 hex 摘要（用于测试/验证）
+    static std::string Sha256Hex(const std::string& input);
+
 private:
     std::string data_path_;
     std::unordered_map<std::string, User> users_;

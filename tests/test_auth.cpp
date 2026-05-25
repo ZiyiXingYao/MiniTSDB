@@ -84,3 +84,11 @@ TEST_F(AuthTest, SaltPersistence) {
     std::error_code ec;
     std::filesystem::remove_all("./test_auth_salt_data", ec);
 }
+
+TEST_F(AuthTest, SHA256CompatibleWithStandard) {
+    // "admin123" 的标准 SHA-256 十六进制摘要
+    // 用 openssl dgst -sha256 验证: echo -n "admin123" | openssl dgst -sha256
+    const std::string expected = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9";
+    std::string result = AuthManager::Sha256Hex("admin123");
+    EXPECT_EQ(result, expected);
+}

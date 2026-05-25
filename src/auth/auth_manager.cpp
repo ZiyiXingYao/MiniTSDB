@@ -24,6 +24,7 @@ public:
                 count_ = 0;
             }
         }
+        message_bytes_ += len;
     }
 
     void Update(const std::string& data) {
@@ -31,7 +32,7 @@ public:
     }
 
     std::string Digest() {
-        uint64_t bits = (total_bits_ + count_ * 8);
+        uint64_t bits = message_bytes_ * 8;
         // Padding
         data_[count_++] = 0x80;
         while (count_ != 56) {
@@ -55,7 +56,7 @@ private:
     uint32_t h_[8];
     uint8_t data_[64];
     size_t count_ = 0;
-    uint64_t total_bits_ = 0;
+    uint64_t message_bytes_ = 0;
 
     static const uint32_t K[64];
 
@@ -65,13 +66,12 @@ private:
         h_[4] = 0x510e527f; h_[5] = 0x9b05688c;
         h_[6] = 0x1f83d9ab; h_[7] = 0x5be0cd19;
         count_ = 0;
-        total_bits_ = 0;
+        message_bytes_ = 0;
     }
 
     uint32_t RotR(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
 
     void ProcessBlock() {
-        total_bits_ += 512;
         uint32_t w[64];
         for (int i = 0; i < 16; i++) {
             w[i] = (data_[i*4] << 24) | (data_[i*4+1] << 16) |
@@ -355,6 +355,12 @@ std::string AuthManager::HashPassword(const std::string& password, const std::st
     SHA256 sha;
     sha.Update(salt);
     sha.Update(password);
+    return sha.Digest();
+}
+
+std::string AuthManager::Sha256Hex(const std::string& input) {
+    SHA256 sha;
+    sha.Update(input);
     return sha.Digest();
 }
 
