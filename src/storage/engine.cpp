@@ -166,7 +166,7 @@ bool StorageEngine::WriteBatch(const std::vector<DataBatch>& batches) {
     return true;
 }
 
-bool StorageEngine::RegisterTag(const TagMeta& meta) {
+bool StorageEngine::RegisterTag([[maybe_unused]] const TagMeta& meta) {
     if (!initialized_) return false;
     // 简化实现：仅存到内存
     return true;
@@ -229,7 +229,7 @@ std::vector<DataPoint> StorageEngine::ReadRaw(const std::string& tag,
 
 std::vector<StorageEngine::AggResult> StorageEngine::ReadAggregated(
     const std::string& tag, const TimeRange& range,
-    int64_t bucket_ms, AggType agg_type) {
+    int64_t bucket_ms, [[maybe_unused]] AggType agg_type) {
     std::vector<AggResult> results;
     auto raw = ReadRaw(tag, range);
     if (raw.empty()) return results;

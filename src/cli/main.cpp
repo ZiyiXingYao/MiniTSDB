@@ -314,12 +314,16 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "]\n";
         } else {
-            printf("%-20s %-15s %s\n", "TAG", "VALUE", "TIMESTAMP");
-            for (int i = 0; i < res.entries_size(); i++) {
-                const auto& e = res.entries(i);
-                printf("%-20s %-15.3f %ld\n", e.tag().c_str(), e.value(), static_cast<long>(e.timestamp()));
+            if (res.entries_size() == 0) {
+                std::cout << "(no matching tags found)\n";
+            } else {
+                printf("%-20s %-15s %s\n", "TAG", "VALUE", "TIMESTAMP");
+                for (int i = 0; i < res.entries_size(); i++) {
+                    const auto& e = res.entries(i);
+                    printf("%-20s %-15.3f %ld\n", e.tag().c_str(), e.value(), static_cast<long>(e.timestamp()));
+                }
+                std::cout << "(" << res.entries_size() << " rows)\n";
             }
-            std::cout << "(" << res.entries_size() << " rows)\n";
         }
         return 0;
     }

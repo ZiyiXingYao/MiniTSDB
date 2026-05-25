@@ -106,6 +106,12 @@ size_t SnapshotStore::Count() {
 }
 
 bool SnapshotStore::SaveToFile() {
+    // 先备份旧文件，防止写入崩溃导致文件损坏
+    std::string bak_path = snapshot_path_ + ".bak";
+    if (os::fs::Exists(snapshot_path_)) {
+        os::fs::Rename(snapshot_path_, bak_path);
+    }
+
     minitsdb::SnapshotFile pb_file;
     pb_file.set_save_time(static_cast<int64_t>(std::time(nullptr)));
     pb_file.set_version(1);
@@ -144,9 +150,20 @@ bool SnapshotStore::LoadFromFile() {
     std::ifstream ifs(snapshot_path_, std::ios::binary);
     if (!ifs || !pb_file.ParseFromIstream(&ifs)) {
         LOG_WARN("Failed to parse snapshot file: {}", snapshot_path_);
+        // 尝试从备份恢复
+        std::string bak_path = snapshot_path_ + ".bak";
+        if (os::fs::Exists(bak_path)) {
+            LOG_INFO("Trying backup snapshot: {}", bak_path);
+            std::ifstream bak_ifs(bak_path, std::ios::binary);
+            if (bak_ifs && pb_file.ParseFromIstream(&bak_ifs)) {
+                LOG_INFO("Recovered from backup snapshot");
+                goto load_data;
+            }
+        }
         return false;
     }
 
+load_data:
     {
         std::unique_lock lock(mutex_);
         snapshot_.clear();
