@@ -276,6 +276,8 @@ if(GTest_FOUND)
     add_minitsdb_gtest(test_sdk tests/test_sdk.cpp)
     add_minitsdb_gtest(test_snapshot_store tests/test_snapshot_store.cpp)
     set_tests_properties(test_snapshot_store PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    add_minitsdb_gtest(test_snapshot_sql tests/test_snapshot_sql.cpp)
+    set_tests_properties(test_snapshot_sql PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     target_compile_definitions(test_sdk PRIVATE MINITSDB_SDK_BUILD)
 
     # test_cli 需要 test_server_lib
