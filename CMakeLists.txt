@@ -148,10 +148,7 @@ target_link_libraries(minitsdb_core PUBLIC
 
 # ---------- Protobuf 代码生成 ----------
 if(gRPC_FOUND AND Protobuf_FOUND)
-    set(PROTO_FILES
-        ${CMAKE_SOURCE_DIR}/protos/minitsdb.proto
-        ${CMAKE_SOURCE_DIR}/protos/snapshot.proto
-    )
+    set(PROTO_FILES ${CMAKE_SOURCE_DIR}/protos/minitsdb.proto)
     set(PROTO_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/proto_gen)
     file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
 
@@ -166,8 +163,6 @@ if(gRPC_FOUND AND Protobuf_FOUND)
             ${PROTO_GEN_DIR}/minitsdb.pb.cc
             ${PROTO_GEN_DIR}/minitsdb.grpc.pb.h
             ${PROTO_GEN_DIR}/minitsdb.grpc.pb.cc
-            ${PROTO_GEN_DIR}/snapshot.pb.h
-            ${PROTO_GEN_DIR}/snapshot.pb.cc
         COMMAND ${PROTOC_EXEC}
             --proto_path=${CMAKE_SOURCE_DIR}/protos
             --cpp_out=${PROTO_GEN_DIR}
