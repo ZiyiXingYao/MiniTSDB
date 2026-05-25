@@ -1,0 +1,57 @@
+#pragma once
+
+#include "common/types.h"
+#include <string>
+#include <unordered_map>
+#include <shared_mutex>
+#include <vector>
+#include <memory>
+#include <atomic>
+#include <thread>
+#include <ctime>
+
+namespace minitsdb {
+
+struct CachedSnapshot {
+    int64_t timestamp = 0;
+    double value = 0.0;
+    std::string tag;
+    bool valid = false;
+};
+
+class SnapshotStore {
+public:
+    SnapshotStore() = default;
+    ~SnapshotStore();
+
+    SnapshotStore(const SnapshotStore&) = delete;
+    SnapshotStore& operator=(const SnapshotStore&) = delete;
+
+    bool Init(const std::string& snapshot_dir);
+    void Shutdown();
+    void SetSaveInterval(int sec) { save_interval_sec_ = sec; }
+
+    void OnWrite(const std::string& tag, const DataPoint& point);
+
+    bool Get(const std::string& tag, CachedSnapshot& out);
+    std::vector<CachedSnapshot> GetByPattern(const std::string& pattern);
+    std::vector<CachedSnapshot> GetAll();
+    size_t Count();
+
+private:
+    bool SaveToFile();
+    bool LoadFromFile();
+    void SaveLoop();
+
+    std::unordered_map<std::string, CachedSnapshot> snapshot_;
+    mutable std::shared_mutex mutex_;
+    std::string snapshot_path_;
+    std::unique_ptr<std::thread> save_thread_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> dirty_{false};
+    int save_interval_sec_ = 10;
+
+    bool MatchPattern(const std::string& tag, const std::string& pattern);
+};
+
+} // namespace minitsdb
