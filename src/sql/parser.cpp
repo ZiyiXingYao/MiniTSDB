@@ -281,6 +281,15 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
         return {true, "", result};  // SELECT ... FROM table (no WHERE)
     }
 
+    // 检测 SNAPSHOT 虚拟表
+    {
+        std::string upper_name = stmt.table_name;
+        for (auto& c : upper_name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (upper_name == "SNAPSHOT") {
+            stmt.latest = true;
+        }
+    }
+
     // WHERE
     if (where_pos != std::string::npos) {
         pos = where_pos + 5;

@@ -1,5 +1,6 @@
 #include "sql/executor.h"
 #include "sql/parser.h"
+#include "snapshot/snapshot_store.h"
 #include "common/logger.h"
 #include <sstream>
 #include <iomanip>
@@ -105,6 +106,14 @@ QueryResult Executor::ExecuteInsert(const InsertStmt& stmt) {
 }
 
 QueryResult Executor::ExecuteSelect(const SelectStmt& stmt) {
+    // SELECT FROM SNAPSHOT 走快照路径
+    {
+        std::string upper_table = stmt.table_name;
+        for (auto& c : upper_table) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (upper_table == "SNAPSHOT") {
+            return ExecuteSnapshot(stmt);
+        }
+    }
     if (stmt.latest) {
         return ExecuteSelectLatest(stmt);
     }
@@ -230,6 +239,75 @@ QueryResult Executor::ExecuteSelectAggregate(const SelectStmt& stmt) {
             case AggType::COUNT: row.push_back(std::to_string(ar.count)); break;
             default:             row.push_back(std::to_string(ar.avg)); break;
         }
+        result.rows.push_back(std::move(row));
+    }
+
+    result.ok = true;
+    return result;
+}
+
+QueryResult Executor::ExecuteSnapshot(const SelectStmt& stmt) {
+    QueryResult result;
+
+    if (!engine_) {
+        result.ok = false;
+        result.error_msg = "Storage engine not available";
+        return result;
+    }
+
+    auto* snapshot = engine_->GetSnapshotStore();
+    if (!snapshot) {
+        result.ok = false;
+        result.error_msg = "Snapshot store not available";
+        return result;
+    }
+
+    // 解析列选择
+    bool select_all = false, select_tag = false, select_value = false, select_ts = false, select_count = false;
+    for (const auto& col : stmt.columns) {
+        std::string upper = col.expr;
+        for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (upper == "*" || upper.find("COUNT") != std::string::npos) {
+            select_all = true;
+            if (upper.find("COUNT") != std::string::npos) select_count = true;
+        }
+        if (upper == "TAG") select_tag = true;
+        if (upper == "VALUE") select_value = true;
+        if (upper == "TS" || upper == "TIMESTAMP") select_ts = true;
+    }
+
+    // 获取数据
+    std::vector<CachedSnapshot> entries;
+    if (!stmt.where.tag_pattern.empty()) {
+        entries = snapshot->GetByPattern(stmt.where.tag_pattern);
+    } else if (!stmt.where.tag_filter.empty()) {
+        CachedSnapshot entry;
+        if (snapshot->Get(stmt.where.tag_filter, entry)) {
+            entries.push_back(entry);
+        }
+    } else {
+        if (select_count) {
+            result.column_names = {"count"};
+            std::vector<std::string> row;
+            row.push_back(std::to_string(snapshot->Count()));
+            result.rows.push_back(std::move(row));
+            result.ok = true;
+            return result;
+        }
+        entries = snapshot->GetAll();
+    }
+
+    // 设置列名
+    if (select_all || select_tag) result.column_names.push_back("tag");
+    if (select_all || select_value) result.column_names.push_back("value");
+    if (select_all || select_ts) result.column_names.push_back("ts");
+
+    // 填充数据行
+    for (const auto& entry : entries) {
+        std::vector<std::string> row;
+        if (select_all || select_tag) row.push_back(entry.tag);
+        if (select_all || select_value) row.push_back(entry.valid ? std::to_string(entry.value) : "null");
+        if (select_all || select_ts) row.push_back(std::to_string(entry.timestamp));
         result.rows.push_back(std::move(row));
     }
 

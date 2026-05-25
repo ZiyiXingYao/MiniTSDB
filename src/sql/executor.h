@@ -40,6 +40,7 @@ private:
     QueryResult ExecuteSelectLatest(const SelectStmt& stmt);
     QueryResult ExecuteSelectRaw(const SelectStmt& stmt);
     QueryResult ExecuteSelectAggregate(const SelectStmt& stmt);
+    QueryResult ExecuteSnapshot(const SelectStmt& stmt);
     QueryResult ExecuteCreateTag(const CreateTagStmt& stmt);
     QueryResult ExecuteCreateAlarm(const CreateAlarmStmt& stmt);
     QueryResult ExecuteCreateUser(const CreateUserStmt& stmt);
