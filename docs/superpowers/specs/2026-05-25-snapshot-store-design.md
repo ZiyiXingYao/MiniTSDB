@@ -140,6 +140,44 @@ message SnapshotResponse {
 }
 ```
 
+## SQL 语法：SELECT FROM SNAPSHOT
+
+复用现有 SELECT 解析器，将 SNAPSHOT 视为虚拟系统表。
+
+**支持的语法**：
+
+```sql
+-- 全部实时值
+SELECT * FROM SNAPSHOT
+SELECT tag, value, ts FROM SNAPSHOT
+
+-- 单点查询
+SELECT * FROM SNAPSHOT WHERE tag = 'BOILER-001'
+SELECT tag, value FROM SNAPSHOT WHERE tag = 'BOILER-001'
+
+-- 模式匹配
+SELECT * FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
+SELECT tag, ts FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
+
+-- 统计
+SELECT COUNT(*) FROM SNAPSHOT
+```
+
+**解析器改动**（`parser.cpp`）：
+- `ParseSelect` 解析出 `table_name` 后，检查 `ToUpper(stmt.table_name) == "SNAPSHOT"`
+- 设置 `stmt.latest = true` 标记为快照查询
+- 忽略 `time_range`、`group_by`、`order_by`、`limit` 等不适用子句
+
+**AST 改动**（`ast.h`）：
+- `SelectStmt` 已有 `latest` 字段，无需新增结构体
+- `QueryPlan::Type` 新增 `SELECT_SNAPSHOT`
+
+**执行器改动**（`executor.cpp`）：
+- `Execute()` 中检测 `SELECT_SNAPSHOT` 类型
+- 调用 `ExecuteSnapshot()` 直接查询 SnapshotStore
+- 列选择映射：`*` → 全部字段，`tag`/`value`/`ts` → 对应 SnapshotEntry 字段
+- WHERE 过滤：`tag =` → `Get()`，`tag LIKE` → `GetByPattern()`，无条件 → `GetAll()`
+
 ## 文件结构
 
 ```
