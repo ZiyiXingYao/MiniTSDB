@@ -119,6 +119,7 @@ file(GLOB_RECURSE CORE_SOURCES
     src/server/*.cpp
     src/alarm/*.cpp
     src/auth/*.cpp
+    src/snapshot/*.cpp
     src/sdk/minitsdb_sdk.cpp
 )
 
