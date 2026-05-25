@@ -72,6 +72,15 @@ MINITSDB_API void minitsdb_result_free(minitsdb_result* res);
 MINITSDB_API int minitsdb_insert(minitsdb_conn* conn, const char* tag,
                                   int64_t timestamp, double value);
 
+// ---------- 快照 ----------
+
+// 查询实时快照
+// tag: 指定 tag, pattern: LIKE 模式, 同时为 NULL 时查全部
+// 返回结果集，使用 minitsdb_result_free 释放
+MINITSDB_API minitsdb_result* minitsdb_snapshot(minitsdb_conn* conn,
+                                                  const char* tag,
+                                                  const char* pattern);
+
 #ifdef __cplusplus
 }
 #endif

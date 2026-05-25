@@ -154,3 +154,46 @@ int minitsdb_insert(minitsdb_conn* conn, const char* tag,
     }
     return static_cast<int>(pb_res.count());
 }
+
+// ============================================================
+//  快照
+// ============================================================
+minitsdb_result* minitsdb_snapshot(minitsdb_conn* conn,
+                                    const char* tag,
+                                    const char* pattern) {
+    auto res = new minitsdb_result();
+
+    SnapshotRequest req;
+    req.set_token(conn->token);
+    if (tag) {
+        req.set_type(SnapshotQueryType::GET);
+        req.set_tag(tag);
+    } else if (pattern) {
+        req.set_type(SnapshotQueryType::GET_MANY);
+        req.set_pattern(pattern);
+    } else {
+        req.set_type(SnapshotQueryType::GET_ALL);
+    }
+
+    SnapshotResponse pb_res;
+    grpc::ClientContext ctx;
+    auto status = conn->stub->Snapshot(&ctx, req, &pb_res);
+
+    if (!status.ok() || !pb_res.ok()) {
+        res->ok = false;
+        res->error = status.ok() ? pb_res.error() : status.error_message();
+        return res;
+    }
+
+    res->columns = {"tag", "value", "ts"};
+    for (int i = 0; i < pb_res.entries_size(); i++) {
+        const auto& e = pb_res.entries(i);
+        std::vector<std::string> row;
+        row.push_back(e.tag());
+        row.push_back(std::to_string(e.value()));
+        row.push_back(std::to_string(e.timestamp()));
+        res->rows.push_back(row);
+    }
+    res->ok = true;
+    return res;
+}
