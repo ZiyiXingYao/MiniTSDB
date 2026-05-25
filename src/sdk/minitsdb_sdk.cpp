@@ -26,8 +26,9 @@ struct minitsdb_result {
 };
 
 // ============================================================
-//  连接管理
+//  连接管理 (extern "C" for C SDK consumers)
 // ============================================================
+extern "C" {
 minitsdb_conn* minitsdb_connect(const char* host, int port,
                                  const char* user, const char* password) {
     auto conn = new minitsdb_conn();
@@ -130,3 +131,28 @@ int minitsdb_result_affected(const minitsdb_result* res) {
 void minitsdb_result_free(minitsdb_result* res) {
     delete res;
 }
+
+// ============================================================
+//  写入
+// ============================================================
+int minitsdb_insert(minitsdb_conn* conn, const char* tag,
+                    int64_t timestamp, double value) {
+    if (!conn || !conn->stub || !tag) return -1;
+
+    InsertRequest req;
+    req.set_token(conn->token);
+    auto* pv = req.add_points();
+    pv->set_tag(tag);
+    pv->set_timestamp(timestamp);
+    pv->set_value(value);
+
+    InsertResponse pb_res;
+    grpc::ClientContext ctx;
+    auto status = conn->stub->Insert(&ctx, req, &pb_res);
+
+    if (!status.ok() || !pb_res.ok()) {
+        return -1;
+    }
+    return static_cast<int>(pb_res.count());
+}
+} // extern "C"

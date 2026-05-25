@@ -63,6 +63,13 @@ MINITSDB_API int minitsdb_result_affected(const minitsdb_result* res);
 // 释放结果集
 MINITSDB_API void minitsdb_result_free(minitsdb_result* res);
 
+// ---------- 写入 ----------
+
+// 写入单个数据点
+// 返回写入的行数（成功为 1），失败返回 -1
+MINITSDB_API int minitsdb_insert(minitsdb_conn* conn, const char* tag,
+                                  int64_t timestamp, double value);
+
 #ifdef __cplusplus
 }
 #endif
