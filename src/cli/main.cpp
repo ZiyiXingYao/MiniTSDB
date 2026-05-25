@@ -2,6 +2,7 @@
 #include <string>
 #include <sstream>
 #include <memory>
+#include <iomanip>
 #include <grpcpp/grpcpp.h>
 #include "common/os/file.h"
 #include "proto_gen/minitsdb.grpc.pb.h"
@@ -101,27 +102,54 @@ private:
 void PrintTable(const QueryResponse& res) {
     if (res.columns_size() == 0) return;
 
-    // 打印表头
+    // 计算每列最大宽度
+    std::vector<size_t> widths(res.columns_size());
     for (int i = 0; i < res.columns_size(); i++) {
-        if (i > 0) std::cout << " | ";
-        std::cout << res.columns(i);
+        widths[i] = res.columns(i).size();
     }
-    std::cout << "\n";
-
-    for (int i = 0; i < res.columns_size(); i++) {
-        if (i > 0) std::cout << "-+-";
-        else for (size_t j = 0; j < res.columns(i).size(); j++) std::cout << "-";
-    }
-    std::cout << "\n";
-
-    // 打印数据行
     for (int r = 0; r < res.rows_size(); r++) {
-        for (int c = 0; c < res.rows(r).values_size(); c++) {
-            if (c > 0) std::cout << " | ";
-            std::cout << res.rows(r).values(c);
+        for (int c = 0; c < res.rows(r).values_size() && c < res.columns_size(); c++) {
+            widths[c] = std::max(widths[c], res.rows(r).values(c).size());
+        }
+    }
+
+    // 打印表头
+    auto PrintRow = [&](const std::vector<std::string>& cells) {
+        std::cout << "| ";
+        for (size_t i = 0; i < cells.size() && i < widths.size(); i++) {
+            if (i > 0) std::cout << " | ";
+            std::cout << std::left << std::setw(static_cast<int>(widths[i])) << cells[i];
+        }
+        std::cout << " |\n";
+    };
+
+    // 分隔线
+    auto PrintSeparator = [&]() {
+        std::cout << "+";
+        for (size_t w : widths) {
+            std::cout << std::string(w + 2, '-') << "+";
         }
         std::cout << "\n";
+    };
+
+    PrintSeparator();
+    std::vector<std::string> header;
+    for (int i = 0; i < res.columns_size(); i++) {
+        header.push_back(res.columns(i));
     }
+    PrintRow(header);
+    PrintSeparator();
+
+    // 数据行
+    for (int r = 0; r < res.rows_size(); r++) {
+        std::vector<std::string> row;
+        for (int c = 0; c < res.rows(r).values_size(); c++) {
+            row.push_back(res.rows(r).values(c));
+        }
+        PrintRow(row);
+    }
+    PrintSeparator();
+
     std::cout << "(" << res.rows_size() << " rows)\n";
 }
 
@@ -217,7 +245,8 @@ int main(int argc, char* argv[]) {
 
     GrpcClient client(opts.host, opts.port);
     if (!client.Login(opts.user, opts.password)) {
-        std::cerr << "ERROR: Login failed\n";
+        std::cerr << "ERROR: Login failed for user '" << opts.user
+                  << "'@" << opts.host << ":" << opts.port << "\n";
         return 1;
     }
 
@@ -239,12 +268,22 @@ int main(int argc, char* argv[]) {
             file.Read(&file_content[0], static_cast<size_t>(fsize));
         }
         std::istringstream stream(file_content);
-        std::string line;
+        std::string content = file_content;
         bool all_ok = true;
-        while (std::getline(stream, line)) {
-            if (line.empty() || line[0] == '#') continue;
-            std::cout << "> " << line << "\n";
-            if (!ExecuteSQL(client, line, opts.format)) all_ok = false;
+        // 按分号分割多条 SQL 语句
+        size_t pos = 0;
+        while (pos < content.size()) {
+            auto semi = content.find(';', pos);
+            if (semi == std::string::npos) semi = content.size();
+            std::string stmt = content.substr(pos, semi - pos);
+            pos = semi + 1;
+            // 去除首尾空白
+            auto start = stmt.find_first_not_of(" \t\r\n");
+            if (start == std::string::npos || stmt[start] == '#') continue;
+            auto end = stmt.find_last_not_of(" \t\r\n");
+            stmt = stmt.substr(start, end - start + 1);
+            std::cout << "> " << stmt << "\n";
+            if (!ExecuteSQL(client, stmt, opts.format)) all_ok = false;
         }
         return all_ok ? 0 : 1;
     }
