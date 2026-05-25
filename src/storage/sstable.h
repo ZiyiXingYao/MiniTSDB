@@ -59,9 +59,9 @@ private:
     std::vector<size_t> block_offsets_;
     bool opened_ = false;
     std::string tag_name_;
-    TimeRange range_;
+    TimeRange range_{INT64_MAX, 0};
 
-    uint32_t CalculateFileCrc();
+
 };
 
 // SSTable 读取器
@@ -88,7 +88,7 @@ private:
     std::string filepath_;
     os::File file_;
     std::string tag_name_;
-    TimeRange range_;
+    TimeRange range_{INT64_MAX, 0};
     uint32_t block_count_ = 0;
     std::vector<BlockIndex> blocks_;
     bool opened_ = false;

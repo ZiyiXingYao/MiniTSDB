@@ -306,3 +306,92 @@ TEST_F(EngineTest, WALRecoveryAfterRestart) {
         EXPECT_EQ(points.size(), 2) << "Expected 2 data points recovered from WAL";
     }
 }
+
+// ============================================================
+//  SSTable 范围追踪测试
+// ============================================================
+
+TEST_F(StorageTest, RangeTrackingCorrect) {
+    auto path = test_dir_ + "/tags/TESTTAG/rangetest.sst";
+    // 写入时间戳全部大于 0 的数据
+    {
+        TimeRange range;
+        SSTableWriter writer(path);
+        ASSERT_TRUE(writer.Open());
+
+        // 第一个块，start=5000
+        BlockCompressor bc1;
+        std::vector<DataPoint> pts1 = {
+            {5000, 1.0}, {6000, 2.0}, {7000, 3.0}
+        };
+        auto block1 = bc1.Compress(pts1);
+        writer.AddBlock(block1);
+
+        // 第二个块，start=2000（更早的时间）
+        BlockCompressor bc2;
+        std::vector<DataPoint> pts2 = {
+            {2000, 4.0}, {3000, 5.0}
+        };
+        auto block2 = bc2.Compress(pts2);
+        writer.AddBlock(block2);
+
+        writer.Close();
+    }
+
+    // 读取并验证范围
+    {
+        SSTableReader reader(path);
+        ASSERT_TRUE(reader.Open());
+        auto range = reader.GetTimeRange();
+        EXPECT_EQ(range.start, 2000) << "range.start should be the earliest timestamp";
+        EXPECT_EQ(range.end, 7000) << "range.end should be the latest timestamp";
+    }
+}
+
+// ============================================================
+//  Compaction 损坏文件不删除测试
+// ============================================================
+
+TEST_F(StorageTest, CompactionSkipsCorruptFiles) {
+    // 创建 2 个小 SSTable + 1 个损坏文件
+    auto tag_dir = test_dir_ + "/tags/TESTTAG";
+    auto good1 = tag_dir + "/good1.sst";
+    auto good2 = tag_dir + "/good2.sst";
+    auto corrupt = tag_dir + "/corrupt.sst";
+
+    // healthy SSTable 1
+    {
+        SSTableWriter w(good1);
+        w.Open();
+        BlockCompressor bc;
+        auto block = bc.Compress({{1000, 1.0}, {2000, 2.0}});
+        w.AddBlock(block);
+        w.Close();
+    }
+    // healthy SSTable 2
+    {
+        SSTableWriter w(good2);
+        w.Open();
+        BlockCompressor bc;
+        auto block = bc.Compress({{3000, 3.0}, {4000, 4.0}});
+        w.AddBlock(block);
+        w.Close();
+    }
+    // 损坏文件：写入无效数据
+    {
+        os::File f;
+        f.Open(corrupt, os::FileMode::READ_WRITE);
+        uint8_t garbage[] = {0xDE, 0xAD, 0xBE, 0xEF};
+        f.Write(garbage, sizeof(garbage));
+        f.Close();
+    }
+
+    ASSERT_TRUE(os::fs::Exists(corrupt)) << "corrupt file should exist";
+
+    // 运行 compaction，阈值设为很大（> good 文件大小）
+    Compaction comp(test_dir_);
+    comp.CompactTag("TESTTAG", tag_dir, 1024 * 1024);
+
+    // corrupt 文件应保留
+    EXPECT_TRUE(os::fs::Exists(corrupt)) << "corrupt file should NOT be deleted by compaction";
+}

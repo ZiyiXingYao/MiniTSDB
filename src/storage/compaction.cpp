@@ -73,11 +73,15 @@ void Compaction::CompactTag(const std::string& tag_name,
 
     LOG_INFO("Compacting {} SSTables for tag {}", small_files.size(), tag_name);
 
-    // 读取所有小文件的数据
+    // 读取所有小文件的数据（只保留可读取的文件）
+    std::vector<std::string> read_files;
     std::vector<DataPoint> all_points;
     for (const auto& f : small_files) {
         SSTableReader reader(f);
-        if (!reader.Open()) continue;
+        if (!reader.Open()) {
+            LOG_WARN("Compaction: skipping corrupt SSTable: {}", f);
+            continue;
+        }
 
         TimeRange full_range;
         full_range.start = 0;
@@ -85,6 +89,7 @@ void Compaction::CompactTag(const std::string& tag_name,
         auto points = reader.ReadRange(full_range);
         all_points.insert(all_points.end(), points.begin(), points.end());
         reader.Close();
+        read_files.push_back(f);
     }
 
     if (all_points.empty()) return;
@@ -125,8 +130,8 @@ void Compaction::CompactTag(const std::string& tag_name,
         return;
     }
 
-    // 删除旧的小文件
-    for (const auto& f : small_files) {
+    // 删除旧的小文件（仅删除已成功读取的）
+    for (const auto& f : read_files) {
         os::fs::Remove(f);
     }
 

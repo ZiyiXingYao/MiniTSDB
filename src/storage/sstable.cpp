@@ -63,12 +63,12 @@ uint32_t Crc32(const uint8_t* data, size_t len) {
     return crc ^ 0xFFFFFFFF;
 }
 
-// SSTable 文件格式（固定 Header 大小 32 字节）:
+// SSTable 文件格式（可变 Header）:
 // [Magic: 8 bytes] "MINITSDB"
-// [Version: 4 bytes]
-// [Tag name: 18 bytes] 固定宽度
-// [Block count: 4 bytes]  --> 第 30 字节
-// [Reserved: 2 bytes]
+// [Version: 4 bytes] uint32
+// [Tag name len: 2 bytes] uint16
+// [Tag name: N bytes]
+// [Block count: 4 bytes] uint32
 // --- 之后是 Block 数据 ---
 // --- 末尾 4 字节 CRC32 ---
 
@@ -117,7 +117,7 @@ void SSTableWriter::AddBlock(const CompressedBlock& block) {
     file_.Write(&val_len, sizeof(val_len));
     file_.Write(block.values.data(), val_len);
 
-    if (range_.start == 0 || block.range.start < range_.start)
+    if (range_.start == INT64_MAX || block.range.start < range_.start)
         range_.start = block.range.start;
     if (block.range.end > range_.end)
         range_.end = block.range.end;
@@ -132,9 +132,9 @@ void SSTableWriter::Close() {
     data_end_ = static_cast<size_t>(file_.Tell());
 
     // 更新 Header 中的 Block count
-    file_.Seek(16, SEEK_SET);  // Magic(8) + Version(4) + Tag(4 padding)
-    // Tag name 在偏移 12，用 4 字节 tag_len + 0 字节数据
-    uint32_t tag_len = 0;
+    file_.Seek(12, SEEK_SET);  // Magic(8) + Version(4)
+    // Tag name: uint16 tag_len + N bytes 数据
+    uint16_t tag_len = 0;
     file_.Write(&tag_len, sizeof(tag_len));
     // Block count
     file_.Write(&block_count_, sizeof(block_count_));
@@ -162,10 +162,6 @@ void SSTableWriter::Close() {
 
     file_.Close();
     opened_ = false;
-}
-
-uint32_t SSTableWriter::CalculateFileCrc() {
-    return 0;
 }
 
 // ============================================================
@@ -206,9 +202,9 @@ bool SSTableReader::ReadHeader() {
         bytes_read != sizeof(version)) return false;
     if (version != SSTABLE_VERSION_CRC) return false;
 
-    // 跳到偏移 16 读取 tag_len 和 block_count
-    file_.Seek(16, SEEK_SET);
-    uint32_t tag_len;
+    // 跳到偏移 12 读取 tag_len（uint16）和 block_count
+    file_.Seek(12, SEEK_SET);
+    uint16_t tag_len;
     if (!file_.Read(&tag_len, sizeof(tag_len), &bytes_read) ||
         bytes_read != sizeof(tag_len)) return false;
     if (tag_len > 0) {
@@ -256,7 +252,7 @@ bool SSTableReader::ReadBlockIndex() {
         header_size = static_cast<size_t>(file_.Tell());
 
         // 更新时间范围
-        if (range_.start == 0 || idx.range.start < range_.start)
+        if (range_.start == INT64_MAX || idx.range.start < range_.start)
             range_.start = idx.range.start;
         if (idx.range.end > range_.end)
             range_.end = idx.range.end;
