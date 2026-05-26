@@ -30,10 +30,11 @@
 
 ### 2. 写入时自动创建 vs 预注册
 **选择**: 两者都支持
-- 首次 `INSERT INTO <table>` 若表不存在，自动创建（含默认元数据）
-- `CREATE TABLE` 可显式定义元数据（type, unit, precision 等）
-- `CREATE TAG` / `CREATE TAGS` 用于预注册测点（含测点级的元数据覆盖）
-**理由**: 工业场景需要显式元数据管理，但简化场景下"写了就有"更友好。
+- 首次 `INSERT INTO <table>` 若表不存在，自动创建（默认描述）
+- `CREATE TABLE` 可显式定义表的描述信息（description, location 等）
+- `CREATE TAG` / `CREATE TAGS` 用于预注册测点及其元数据
+- 类型、单位、精度等元数据是**测点级**的属性，不是表级的
+**理由**: 一张表可以包含不同数据类型的测点（温度 analog、状态 digital、报警码 string），类型约束在测点级别而非表级别。工业场景需要显式元数据管理，但简化场景下"写了就有"更友好。
 
 ### 3. DROP TAG 语法
 **选择**: `DROP TAG <table>.<tag>` 以限定表范围
@@ -81,20 +82,26 @@ CREATE DATABASE <name>
 DROP DATABASE <name>
 USE <name>
 
--- 建表
+-- 建表：仅定义分组信息，不限制测点类型
 CREATE TABLE <name> (
-    type='analog',                    -- 数据类型：analog/digital/string/accumulator
-    unit='celsius',                   -- 工程单位
-    precision=1,                      -- 小数位
-    collect_interval_ms=1000,         -- 采集间隔（毫秒）
-    description='Boiler temperature'  -- 描述
+    description='All boiler measurements',  -- 描述
+    location='Unit 1'                        -- 位置（可选）
 )
 
--- 注册测点（单个）
-CREATE TAG <tag_name> IN TABLE <table_name>
+-- 注册测点（单个，带元数据）
+CREATE TAG BOILER-TEMP IN TABLE boiler_data (
+    type='analog',          -- 数据类型：analog/digital/string/accumulator
+    unit='celsius',         -- 工程单位
+    precision=1             -- 小数位
+)
 
--- 注册测点（批量）
-CREATE TAGS IN TABLE <table_name> (tag1, tag2, tag3)
+-- 注册测点（批量，每个测点独立指定类型）
+CREATE TAGS IN TABLE boiler_data (
+    BOILER-TEMP  (type='analog', unit='celsius', precision=1),
+    BOILER-PRESS (type='analog', unit='kPa', precision=2),
+    BOILER-STAT  (type='digital'),
+    BOILER-ALARM (type='string')
+)
 
 -- 删除
 DROP TABLE <name>
