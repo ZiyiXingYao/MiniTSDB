@@ -99,88 +99,110 @@ SQL: INSERT INTO boiler_temp (tag, value) VALUES ('BOILER-001', 523.7)
 → 缓存 key: "factory_a:boiler_temp:BOILER-001"
 ```
 
-## SQL 语法参考
+## 完整 SQL 参考
 
-### DDL — 数据定义
+### DDL — 数据定义语言
 
 ```sql
--- 数据库管理
+-- ── 数据库 ──
 CREATE DATABASE <name>
 DROP DATABASE <name>
 USE <name>
 
--- 表管理
+-- ── 表（分组） ──
 CREATE TABLE <name> (
-    description='All boiler measurements',
-    location='Unit 1'
+    description='...',
+    location='...'
 )
 DROP TABLE <name>
 
--- 测点注册（单个）
+-- ── 测点注册 ──
+
+-- 单个注册（带元数据）
 CREATE TAG BOILER-TEMP IN TABLE boiler_data (
-    type='analog',          -- analog/digital/string/accumulator
+    type='analog',          -- analog|digital|string|accumulator
     unit='celsius',
     precision=1
 )
 
--- 测点注册（批量）
+-- 批量注册
 CREATE TAGS IN TABLE boiler_data (
     BOILER-TEMP  (type='analog', unit='celsius', precision=1),
-    BOILER-PRESS (type='analog', unit='kPa', precision=2),
+    BOILER-PRESS (type='analog', unit='kPa',   precision=2),
     BOILER-STAT  (type='digital'),
     BOILER-ALARM (type='string')
 )
 
 -- 测点管理
 DROP TAG <table>.<name>
-ALTER TAG <table>.<name> SET <property>='<value>'
--- 注意：ALTER TAG 禁止修改 type 属性
+ALTER TAG <table>.<name> SET <property>='<value>'         -- 禁改 type
 
--- 报警/用户
+-- ── 报警规则 ──
+CREATE ALARM <name> ON <tag>
+    WHEN value <op> <threshold>
+    ACTION '<action1>', '<action2>'
 DROP ALARM <name>
+
+-- ── 用户管理 ──
+CREATE USER <name> WITH PASSWORD '<pwd>' ROLE admin|operator|viewer
 DROP USER <name>
 ALTER USER <name> SET PASSWORD '<new_pwd>'
 ALTER USER <name> SET ROLE admin|operator|viewer
+
+-- ── 系统配置 ──
+ALTER SYSTEM SET <key>='<value>'
 ```
 
-### DML — 数据操作
+### DML — 数据操作语言
 
 ```sql
--- 写入
-INSERT INTO <table> (tag, value, timestamp?) VALUES (...), (...), ...
+-- ── 写入 ──
+INSERT INTO <table> (tag, value, timestamp?)
+    VALUES ('BOILER-001', 523.7),
+           ('BOILER-002', 487.2, '2026-05-26T10:30:00.000000Z')
 
--- 查询（原始数据）
-SELECT <columns> FROM <table> WHERE tag = '<name>'
-    AND timestamp BETWEEN '<start>' AND '<end>'
+-- ── 查询：原始数据 ──
+SELECT <columns> FROM <table>
+    WHERE tag = '<name>'
+      AND timestamp BETWEEN '<start>' AND '<end>'
     ORDER BY timestamp [ASC|DESC]        -- 默认 ASC
-    LIMIT <n>                            -- 限制返回行数
+    LIMIT <n>
 
--- 查询（最新值）
-SELECT <columns> FROM <table> WHERE tag = '<name>' LATEST
+-- ── 查询：最新值（历史引擎路径） ──
+SELECT <columns> FROM <table>
+    WHERE tag = '<name>' LATEST
 
--- 查询（快照 - 系统表）
-SELECT tag, value, timestamp FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
+-- ── 查询：快照（SnapshotStore 内存路径） ──
+SELECT tag, value, timestamp FROM SNAPSHOT
+    WHERE tag = '<name>'
+SELECT tag, value, timestamp FROM SNAPSHOT
+    WHERE tag LIKE '<pattern>'
+SELECT COUNT(*) FROM SNAPSHOT
 
--- 聚合查询
+-- ── 聚合查询 ──
 SELECT TIME_BUCKET('5m', timestamp) AS bucket, AVG(value)
-    FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN ... GROUP BY bucket
--- 支持的聚合函数：AVG, MAX, MIN, SUM, COUNT, FIRST, LAST, STDDEV
+    FROM <table>
+    WHERE tag = '<name>' AND timestamp BETWEEN '<start>' AND '<end>'
+    GROUP BY bucket
+-- 聚合函数: AVG | MAX | MIN | SUM | COUNT | FIRST | LAST | STDDEV
 
--- 删除（按时间范围）
-DELETE FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN '<start>' AND '<end>'
+-- ── 删除 ──
+DELETE FROM <table>
+    WHERE tag = '<name>' AND timestamp BETWEEN '<start>' AND '<end>'
 
--- 更新（修改指定时间点的值）
-UPDATE <table> SET value = <new_val> WHERE tag = '<name>' AND timestamp = '<exact_time>'
+-- ── 更新 ──
+UPDATE <table> SET value = <new_val>
+    WHERE tag = '<name>' AND timestamp = '<exact_time>'
 ```
 
 ### SHOW — 元数据查询
 
 ```sql
 SHOW DATABASES
-SHOW TABLES                    -- 当前数据库
-SHOW TABLES FROM <database>    -- 指定数据库
-SHOW TAGS FROM <table>         -- 表下所有测点
-SHOW TAGS FROM <table> LIKE '<pattern>'  -- 模式匹配
+SHOW TABLES                         -- 当前数据库
+SHOW TABLES FROM <database>         -- 指定数据库
+SHOW TAGS FROM <table>              -- 表下所有测点
+SHOW TAGS FROM <table> LIKE '<pattern>'
 SHOW USERS
 SHOW ALARMS
 ```
