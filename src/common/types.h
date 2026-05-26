@@ -8,7 +8,7 @@
 
 namespace minitsdb {
 
-// 时间戳类型（毫秒精度）
+// 时间戳类型（微秒精度，Unix 纪元以来的微秒数）
 using Timestamp = int64_t;
 
 // 测点值类型

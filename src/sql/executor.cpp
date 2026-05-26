@@ -53,7 +53,7 @@ QueryResult Executor::ExecuteInsert(const InsertStmt& stmt) {
     for (const auto& row : stmt.rows) {
         std::string tag;
         DataPoint point;
-        point.ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+        point.ts = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
 
         bool has_tag = false;
@@ -416,8 +416,8 @@ std::string Executor::FormatValue(const DataPoint& point) {
 std::string Executor::FormatTimestamp(Timestamp ts) {
     if (ts == 0) return "0";
 
-    auto ms = ts % 1000;
-    auto sec = ts / 1000;
+    auto us = ts % 1000000;
+    auto sec = ts / 1000000;
     std::time_t t = static_cast<std::time_t>(sec);
 
     char buf[32];
@@ -430,7 +430,7 @@ std::string Executor::FormatTimestamp(Timestamp ts) {
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
 
     std::ostringstream oss;
-    oss << buf << "." << std::setfill('0') << std::setw(3) << ms;
+    oss << buf << "." << std::setfill('0') << std::setw(6) << us;
     return oss.str();
 }
 
