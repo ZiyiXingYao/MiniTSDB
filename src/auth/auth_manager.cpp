@@ -419,4 +419,54 @@ void AuthManager::CleanupExpiredTokens() {
     }
 }
 
+bool AuthManager::DropUser(const std::string& requester_token,
+                            const std::string& username) {
+    auto* requester = ValidateToken(requester_token);
+    if (!requester || requester->role != UserRole::ADMIN) return false;
+    if (requester->name == username) return false;  // 不能删除自己
+
+    auto it = users_.find(username);
+    if (it == users_.end()) return true;  // 幂等
+
+    // 保护最后一个 admin
+    if (it->second.role == UserRole::ADMIN) {
+        int admin_count = 0;
+        for (const auto& [_, u] : users_) {
+            if (u.role == UserRole::ADMIN) admin_count++;
+        }
+        if (admin_count <= 1) return false;
+    }
+
+    users_.erase(it);
+    Save();
+    return true;
+}
+
+bool AuthManager::AlterUser(const std::string& requester_token,
+                             const std::string& username,
+                             const std::string& property,
+                             const std::string& value) {
+    auto* requester = ValidateToken(requester_token);
+    if (!requester || requester->role != UserRole::ADMIN) return false;
+
+    auto it = users_.find(username);
+    if (it == users_.end()) return false;
+
+    if (property == "password") {
+        std::string salt = GenerateSalt();
+        it->second.salt = salt;
+        it->second.password_hash = HashPassword(value, salt);
+        Save();
+        return true;
+    } else if (property == "role") {
+        if (value == "admin") it->second.role = UserRole::ADMIN;
+        else if (value == "operator") it->second.role = UserRole::OPERATOR;
+        else if (value == "viewer") it->second.role = UserRole::VIEWER;
+        else return false;
+        Save();
+        return true;
+    }
+    return false;
+}
+
 } // namespace minitsdb

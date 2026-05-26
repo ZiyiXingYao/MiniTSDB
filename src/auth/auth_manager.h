@@ -62,6 +62,16 @@ public:
     bool CheckPermission(const std::string& token,
                          const std::string& operation);
 
+    // 删除用户（仅 admin 可执行）
+    bool DropUser(const std::string& requester_token,
+                  const std::string& username);
+
+    // 修改用户属性（仅 admin 可执行）
+    bool AlterUser(const std::string& requester_token,
+                   const std::string& username,
+                   const std::string& property,
+                   const std::string& value);
+
     // 获取用户列表
     std::vector<User> GetUsers(const std::string& requester_token);
 

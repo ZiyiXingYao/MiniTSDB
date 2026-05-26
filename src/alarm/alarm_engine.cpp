@@ -49,6 +49,56 @@ std::vector<AlarmRule> AlarmEngine::GetRules() const {
     return rules_;
 }
 
+bool AlarmEngine::AlterRule(const std::string& name, const std::string& property,
+                             const std::string& value) {
+    for (auto& r : rules_) {
+        if (r.name == name) {
+            if (property == "condition") {
+                std::string op;
+                double threshold;
+                if (!ParseCondition(value, op, threshold)) return false;
+                r.condition = value;
+                r.op = op;
+                r.threshold = threshold;
+                return true;
+            } else if (property == "action") {
+                r.actions.clear();
+                std::string remaining = value;
+                size_t start = 0, end;
+                while ((end = remaining.find(',', start)) != std::string::npos) {
+                    auto token = remaining.substr(start, end - start);
+                    // Trim whitespace
+                    auto first = token.find_first_not_of(' ');
+                    auto last = token.find_last_not_of(' ');
+                    if (first != std::string::npos)
+                        token = token.substr(first, last - first + 1);
+                    else token.clear();
+                    if (!token.empty()) r.actions.push_back(token);
+                    start = end + 1;
+                }
+                auto token = remaining.substr(start);
+                auto first = token.find_first_not_of(' ');
+                auto last = token.find_last_not_of(' ');
+                if (first != std::string::npos) {
+                    token = token.substr(first, last - first + 1);
+                    if (!token.empty()) r.actions.push_back(token);
+                }
+                return true;
+            }
+            return false;  // 不支持其他属性
+        }
+    }
+    return false;  // 规则不存在
+}
+
+int AlarmEngine::RemoveRulesByTag(const std::string& tag_name) {
+    auto it = std::remove_if(rules_.begin(), rules_.end(),
+        [&](const AlarmRule& r) { return r.tag_name == tag_name; });
+    int count = static_cast<int>(std::distance(it, rules_.end()));
+    rules_.erase(it, rules_.end());
+    return count;
+}
+
 void AlarmEngine::Evaluate(const std::string& tag, const DataPoint& point) {
     if (!std::holds_alternative<double>(point.value)) return;
 

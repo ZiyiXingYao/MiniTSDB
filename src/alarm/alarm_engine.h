@@ -41,6 +41,13 @@ public:
     // 删除报警规则
     bool RemoveRule(const std::string& name);
 
+    // 修改报警规则属性
+    bool AlterRule(const std::string& name, const std::string& property,
+                   const std::string& value);
+
+    // 按测点删除报警（级联删除用）
+    int RemoveRulesByTag(const std::string& tag_name);
+
     // 获取所有规则
     std::vector<AlarmRule> GetRules() const;
 
