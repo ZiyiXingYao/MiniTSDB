@@ -203,4 +203,64 @@ bool SnapshotStore::MatchPattern(const std::string& tag, const std::string& patt
     return pi == pattern.size() && ti == tag.size();
 }
 
+// ── 新 API（三级命名） ──
+
+void SnapshotStore::OnWrite(const std::string& db, const std::string& table,
+                             const std::string& tag, const DataPoint& point) {
+    CachedSnapshot entry;
+    entry.tag = db + ":" + table + ":" + tag;
+    entry.timestamp = point.ts;
+    entry.valid = true;
+    if (std::holds_alternative<double>(point.value)) {
+        entry.value = std::get<double>(point.value);
+    } else if (std::holds_alternative<int64_t>(point.value)) {
+        entry.value = static_cast<double>(std::get<int64_t>(point.value));
+    }
+    {
+        std::unique_lock lock(mutex_);
+        snapshot_[entry.tag] = entry;
+    }
+    dirty_.store(true, std::memory_order_relaxed);
+    save_cv_.notify_one();
+}
+
+bool SnapshotStore::Get(const std::string& db, const std::string& table,
+                         const std::string& tag, CachedSnapshot& out) {
+    std::string key = db + ":" + table + ":" + tag;
+    std::shared_lock lock(mutex_);
+    auto it = snapshot_.find(key);
+    if (it == snapshot_.end()) return false;
+    out = it->second;
+    return true;
+}
+
+std::vector<CachedSnapshot> SnapshotStore::GetByPattern(
+    const std::string& db, const std::string& table,
+    const std::string& pattern) {
+    std::string prefix = db + ":" + table + ":";
+    std::string full_pattern = prefix + pattern;
+    std::vector<CachedSnapshot> result;
+    std::shared_lock lock(mutex_);
+    for (const auto& [key, entry] : snapshot_) {
+        if (key.compare(0, prefix.size(), prefix) == 0 &&
+            MatchPattern(key, full_pattern)) {
+            result.push_back(entry);
+        }
+    }
+    return result;
+}
+
+std::vector<CachedSnapshot> SnapshotStore::GetAll(
+    const std::string& db, const std::string& table) {
+    std::string prefix = db + ":" + table + ":";
+    std::vector<CachedSnapshot> result;
+    std::shared_lock lock(mutex_);
+    for (const auto& [key, entry] : snapshot_) {
+        if (key.compare(0, prefix.size(), prefix) == 0) {
+            result.push_back(entry);
+        }
+    }
+    return result;
+}
+
 } // namespace minitsdb

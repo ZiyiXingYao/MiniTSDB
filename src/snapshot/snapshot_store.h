@@ -33,11 +33,22 @@ public:
     void Shutdown();
     void SetSaveInterval(int sec) { save_interval_sec_ = sec; }
 
+    // ── 旧 API（兼容） ──
     void OnWrite(const std::string& tag, const DataPoint& point);
-
     bool Get(const std::string& tag, CachedSnapshot& out);
     std::vector<CachedSnapshot> GetByPattern(const std::string& pattern);
     std::vector<CachedSnapshot> GetAll();
+
+    // ── 新 API（三级命名） ──
+    void OnWrite(const std::string& db, const std::string& table,
+                 const std::string& tag, const DataPoint& point);
+    bool Get(const std::string& db, const std::string& table,
+             const std::string& tag, CachedSnapshot& out);
+    std::vector<CachedSnapshot> GetByPattern(const std::string& db,
+        const std::string& table, const std::string& pattern);
+    std::vector<CachedSnapshot> GetAll(const std::string& db,
+        const std::string& table);
+
     size_t Count();
 
 private:

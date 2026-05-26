@@ -14,28 +14,27 @@ class LatestCache {
 public:
     LatestCache() = default;
 
-    // 更新某个 Tag 的最新值
+    // ── 旧 API（兼容过渡期，内部调用新 API） ──
     void Update(const std::string& tag, const DataPoint& point);
-
-    // 获取某个 Tag 的最新值
-    // 如果不存在返回 false
     bool Get(const std::string& tag, DataPoint& out);
-
-    // 批量获取多个 Tag 的最新值
-    // LIKE 模式匹配，如 "BOILER-%"
-    std::vector<std::pair<std::string, DataPoint>> GetByPattern(
-        const std::string& pattern);
-
-    // 获取所有 Tag 的最新值
+    std::vector<std::pair<std::string, DataPoint>> GetByPattern(const std::string& pattern);
     std::vector<std::pair<std::string, DataPoint>> GetAll();
-
-    // 删除某个 Tag
     void Remove(const std::string& tag);
 
-    // 清空
-    void Clear();
+    // ── 新 API（三级命名） ──
+    void Update(const std::string& db, const std::string& table,
+                const std::string& tag, const DataPoint& point);
+    bool Get(const std::string& db, const std::string& table,
+             const std::string& tag, DataPoint& out);
+    std::vector<std::pair<std::string, DataPoint>> GetByPattern(
+        const std::string& db, const std::string& table, const std::string& pattern);
+    std::vector<std::pair<std::string, DataPoint>> GetAll(
+        const std::string& db, const std::string& table);
+    void Remove(const std::string& db, const std::string& table,
+                const std::string& tag);
+    void RemoveByPrefix(const std::string& prefix);
 
-    // 当前缓存的 Tag 数量
+    void Clear();
     size_t Size() const;
 
 private:
@@ -43,6 +42,8 @@ private:
     std::unordered_map<std::string, DataPoint> cache_;
 
     bool MatchPattern(const std::string& tag, const std::string& pattern);
+    std::string MakeKey(const std::string& db, const std::string& table,
+                        const std::string& tag) const;
 };
 
 } // namespace minitsdb
