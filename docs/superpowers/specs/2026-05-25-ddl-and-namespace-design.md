@@ -152,6 +152,8 @@ INSERT INTO <table> (tag, value, timestamp?) VALUES (...), (...), ...
 -- 查询（原始数据）
 SELECT <columns> FROM <table> WHERE tag = '<name>'
     AND timestamp BETWEEN '<start>' AND '<end>'
+    ORDER BY timestamp [ASC|DESC]        -- 默认 ASC
+    LIMIT <n>                            -- 限制返回行数
 
 -- 查询（最新值）
 SELECT <columns> FROM <table> WHERE tag = '<name>' LATEST
