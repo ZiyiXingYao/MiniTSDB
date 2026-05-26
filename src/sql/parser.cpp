@@ -78,14 +78,33 @@ ParseResult SQLParser::Parse(const std::string& sql) {
 
     std::string upper = ToUpper(trimmed);
 
-    if (upper.find("INSERT") == 0) return ParseInsert(trimmed);
     if (upper.find("SELECT") == 0) return ParseSelect(trimmed);
+
+    // DDL: 精确匹配从长到短
+    if (upper.find("CREATE DATABASE") == 0) return ParseCreateDatabase(trimmed);
+    if (upper.find("CREATE TABLE") == 0) return ParseCreateTable(trimmed);
+    if (upper.find("CREATE TAGS") == 0) return ParseCreateTags(trimmed);
     if (upper.find("CREATE TAG") == 0) return ParseCreateTag(trimmed);
     if (upper.find("CREATE ALARM") == 0) return ParseCreateAlarm(trimmed);
     if (upper.find("CREATE USER") == 0) return ParseCreateUser(trimmed);
-    if (upper.find("ALTER SYSTEM") == 0 || upper.find("ALTER SYSTEM SET") == 0) {
-        return ParseAlterSystem(trimmed);
-    }
+
+    if (upper.find("DROP TABLE") == 0) return ParseDropTable(trimmed);
+    if (upper.find("DROP TAG") == 0) return ParseDropTag(trimmed);
+    if (upper.find("DROP ALARM") == 0) return ParseDropAlarm(trimmed);
+    if (upper.find("DROP USER") == 0) return ParseDropUser(trimmed);
+    if (upper.find("DROP DATABASE") == 0) return ParseDropDatabase(trimmed);
+
+    if (upper.find("ALTER TAG") == 0) return ParseAlterTag(trimmed);
+    if (upper.find("ALTER ALARM") == 0) return ParseAlterAlarm(trimmed);
+    if (upper.find("ALTER USER") == 0) return ParseAlterUser(trimmed);
+    if (upper.find("ALTER SYSTEM") == 0) return ParseAlterSystem(trimmed);
+    if (upper.find("ALTER") == 0) return {false, "Unknown ALTER type", nullptr};
+
+    if (upper.find("INSERT") == 0) return ParseInsert(trimmed);
+    if (upper.find("DELETE") == 0) return ParseDelete(trimmed);
+    if (upper.find("UPDATE") == 0) return ParseUpdate(trimmed);
+    if (upper.find("USE ") == 0 || upper == "USE") return ParseUse(trimmed);
+    if (upper.find("SHOW") == 0) return ParseShow(trimmed);
 
     return {false, "Unknown statement type: " + trimmed.substr(0, 30), nullptr};
 }
@@ -112,6 +131,10 @@ bool SQLParser::IsAlterSystem(const std::string& sql) {
 
 bool SQLParser::IsCreateUser(const std::string& sql) {
     return ToUpper(Trim(sql)).find("CREATE USER") == 0;
+}
+
+bool SQLParser::IsShow(const std::string& sql) {
+    return ToUpper(Trim(sql)).find("SHOW") == 0;
 }
 
 // ============================================================
@@ -614,6 +637,382 @@ Timestamp ParseTimeString(const std::string& s) {
     auto epoch = std::mktime(&tm);
     if (epoch == -1) return 0;
     return static_cast<Timestamp>(epoch) * 1000 + ms;
+}
+
+// ============================================================
+//  新增 DDL/DML/SHOW 解析
+// ============================================================
+
+ParseResult SQLParser::ParseDropTag(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DropTagStmt stmt;
+    size_t pos = FindKeyword(sql, "DROP TAG") + 8;
+    SkipWhitespace(sql, pos);
+    auto rest = Trim(sql.substr(pos));
+    auto dot = rest.find('.');
+    if (dot != std::string::npos) {
+        stmt.table_name = Trim(rest.substr(0, dot));
+        stmt.tag_name = Trim(rest.substr(dot + 1));
+    } else {
+        stmt.tag_name = rest;
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseDropAlarm(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DropAlarmStmt stmt;
+    size_t pos = FindKeyword(sql, "DROP ALARM") + 10;
+    SkipWhitespace(sql, pos);
+    stmt.alarm_name = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseDropUser(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DropUserStmt stmt;
+    size_t pos = FindKeyword(sql, "DROP USER") + 9;
+    SkipWhitespace(sql, pos);
+    stmt.username = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseDropTable(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DropTableStmt stmt;
+    size_t pos = FindKeyword(sql, "DROP TABLE") + 10;
+    SkipWhitespace(sql, pos);
+    stmt.table_name = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseDropDatabase(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DropDatabaseStmt stmt;
+    size_t pos = FindKeyword(sql, "DROP DATABASE") + 13;
+    SkipWhitespace(sql, pos);
+    stmt.db_name = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseAlterUser(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    AlterUserStmt stmt;
+    // ALTER USER <name> SET <property> '<value>'
+    size_t pos = FindKeyword(sql, "ALTER USER") + 10;
+    SkipWhitespace(sql, pos);
+    size_t name_end = sql.find(" SET ", pos);
+    if (name_end == std::string::npos) return {false, "Invalid ALTER USER syntax", nullptr};
+    stmt.username = Trim(sql.substr(pos, name_end - pos));
+    pos = name_end + 5;
+    SkipWhitespace(sql, pos);
+    size_t val_pos = sql.find('\'', pos);
+    if (val_pos == std::string::npos) {
+        // 可能是 role 值不带引号
+        stmt.property = Trim(sql.substr(pos));
+        size_t space = stmt.property.find(' ');
+        if (space != std::string::npos) {
+            stmt.value = Trim(stmt.property.substr(space + 1));
+            stmt.property = Trim(stmt.property.substr(0, space));
+        }
+    } else {
+        stmt.property = Trim(sql.substr(pos, val_pos - pos));
+        stmt.value = ExtractQuoted(sql, val_pos);
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseAlterAlarm(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    AlterAlarmStmt stmt;
+    size_t pos = FindKeyword(sql, "ALTER ALARM") + 11;
+    SkipWhitespace(sql, pos);
+    size_t set_pos = sql.find(" SET ", pos);
+    if (set_pos == std::string::npos) return {false, "Invalid ALTER ALARM syntax", nullptr};
+    stmt.alarm_name = Trim(sql.substr(pos, set_pos - pos));
+    pos = set_pos + 5;
+    SkipWhitespace(sql, pos);
+    size_t eq = sql.find('=', pos);
+    if (eq == std::string::npos) {  // SET action='log','email' 无 = 号
+        size_t sp = sql.find(' ', pos);
+        if (sp != std::string::npos) {
+            size_t q1 = sql.find('\'', sp);
+            if (q1 == std::string::npos) return {false, "Invalid ALTER ALARM value", nullptr};
+            stmt.property = Trim(sql.substr(pos, sp - pos));
+            stmt.value = ExtractQuoted(sql, q1);
+        }
+    } else {
+        stmt.property = Trim(sql.substr(pos, eq - pos));
+        pos = eq + 1;
+        SkipWhitespace(sql, pos);
+        if (sql[pos] == '\'') {
+            stmt.value = ExtractQuoted(sql, pos);
+        } else {
+            size_t end = sql.find_first_of(" \t", pos);
+            stmt.value = Trim(sql.substr(pos, end - pos));
+        }
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseAlterTag(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    AlterTagStmt stmt;
+    size_t pos = FindKeyword(sql, "ALTER TAG") + 9;
+    SkipWhitespace(sql, pos);
+    auto rest = Trim(sql.substr(pos));
+    auto dot = rest.find('.');
+    if (dot != std::string::npos) {
+        stmt.table_name = Trim(rest.substr(0, dot));
+        auto after = Trim(rest.substr(dot + 1));
+        auto set_pos = after.find(" SET ");
+        if (set_pos == std::string::npos) return {false, "Invalid ALTER TAG syntax", nullptr};
+        stmt.tag_name = Trim(after.substr(0, set_pos));
+        auto prop_part = Trim(after.substr(set_pos + 5));
+        auto eq = prop_part.find('=');
+        if (eq == std::string::npos) return {false, "Invalid ALTER TAG property", nullptr};
+        stmt.property = Trim(prop_part.substr(0, eq));
+        auto val_part = Trim(prop_part.substr(eq + 1));
+        if (!val_part.empty() && val_part[0] == '\'')
+            val_part = val_part.substr(1, val_part.size() - 2);
+        stmt.value = val_part;
+    } else {
+        return {false, "ALTER TAG requires <table>.<tag>", nullptr};
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseCreateDatabase(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    CreateDatabaseStmt stmt;
+    size_t pos = FindKeyword(sql, "CREATE DATABASE") + 15;
+    SkipWhitespace(sql, pos);
+    stmt.db_name = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseUse(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    UseStmt stmt;
+    auto upper = ToUpper(sql);
+    size_t pos = upper.find("USE");
+    pos += 3;
+    SkipWhitespace(sql, pos);
+    stmt.db_name = Trim(sql.substr(pos));
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseCreateTable(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    CreateTableStmt stmt;
+    size_t pos = FindKeyword(sql, "CREATE TABLE") + 12;
+    SkipWhitespace(sql, pos);
+    size_t name_end = pos;
+    while (name_end < sql.size() && sql[name_end] != ' ' && sql[name_end] != '(')
+        name_end++;
+    stmt.table_name = Trim(sql.substr(pos, name_end - pos));
+    pos = name_end;
+    SkipWhitespace(sql, pos);
+    if (pos < sql.size() && sql[pos] == '(') {
+        pos++;
+        while (pos < sql.size() && sql[pos] != ')') {
+            SkipWhitespace(sql, pos);
+            auto eq = sql.find('=', pos);
+            if (eq == std::string::npos || eq > sql.find(')', pos)) break;
+            std::string key = Trim(sql.substr(pos, eq - pos));
+            pos = eq + 1;
+            SkipWhitespace(sql, pos);
+            std::string val;
+            if (sql[pos] == '\'') val = ExtractQuoted(sql, pos);
+            else {
+                auto end = sql.find_first_of(",)", pos);
+                val = Trim(sql.substr(pos, end - pos));
+                pos = end;
+            }
+            stmt.properties.emplace_back(key, val);
+            SkipWhitespace(sql, pos);
+        }
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseCreateTags(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    CreateTagsStmt stmt;
+    size_t pos = FindKeyword(sql, "CREATE TAGS") + 11;
+    SkipWhitespace(sql, pos);
+    auto in_pos = ToUpper(sql).find("IN TABLE", pos);
+    if (in_pos == std::string::npos) return {false, "CREATE TAGS requires IN TABLE", nullptr};
+    pos = in_pos + 8;
+    SkipWhitespace(sql, pos);
+    size_t name_end = sql.find('(', pos);
+    if (name_end == std::string::npos) return {false, "CREATE TAGS needs tag list", nullptr};
+    stmt.table_name = Trim(sql.substr(pos, name_end - pos));
+    pos = name_end + 1;
+    while (pos < sql.size() && sql[pos] != ')') {
+        SkipWhitespace(sql, pos);
+        size_t tag_start = pos;
+        while (pos < sql.size() && sql[pos] != '(' && sql[pos] != ',' && sql[pos] != ')')
+            pos++;
+        CreateTagsStmt::TagDef def;
+        def.name = Trim(sql.substr(tag_start, pos - tag_start));
+        SkipWhitespace(sql, pos);
+        if (pos < sql.size() && sql[pos] == '(') {
+            pos++;
+            while (pos < sql.size() && sql[pos] != ')') {
+                SkipWhitespace(sql, pos);
+                auto eq = sql.find('=', pos);
+                if (eq == std::string::npos) break;
+                std::string k = Trim(sql.substr(pos, eq - pos));
+                pos = eq + 1;
+                SkipWhitespace(sql, pos);
+                std::string v;
+                if (sql[pos] == '\'') v = ExtractQuoted(sql, pos);
+                else {
+                    auto end = sql.find_first_of(",)", pos);
+                    v = Trim(sql.substr(pos, end - pos));
+                    pos = end;
+                }
+                def.props.emplace_back(k, v);
+                SkipWhitespace(sql, pos);
+            }
+            if (pos < sql.size()) pos++;
+        }
+        stmt.tags.push_back(std::move(def));
+        SkipWhitespace(sql, pos);
+        if (pos < sql.size() && sql[pos] == ',') pos++;
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseDelete(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    DeleteStmt stmt;
+    size_t pos = FindKeyword(sql, "DELETE") + 6;
+    SkipWhitespace(sql, pos);
+    // DELETE FROM <table> WHERE tag='<name>' AND timestamp BETWEEN 'start' AND 'end'
+    auto from_pos = ToUpper(sql).find("FROM", pos);
+    if (from_pos == std::string::npos) return {false, "DELETE requires FROM", nullptr};
+    pos = from_pos + 4;
+    SkipWhitespace(sql, pos);
+    size_t where_pos = ToUpper(sql).find("WHERE", pos);
+    if (where_pos == std::string::npos) return {false, "DELETE requires WHERE", nullptr};
+    stmt.table_name = Trim(sql.substr(pos, where_pos - pos));
+    // Simplified: just parse tag filter and time range
+    pos = where_pos + 5;
+    auto tag_eq = sql.find("tag=", pos);
+    if (tag_eq != std::string::npos) {
+        tag_eq += 4;
+        SkipWhitespace(sql, tag_eq);
+        if (sql[tag_eq] == '\'') stmt.tag_filter = ExtractQuoted(sql, tag_eq);
+    }
+    auto between_pos = ToUpper(sql).find("BETWEEN", pos);
+    if (between_pos != std::string::npos) {
+        auto and_pos = ToUpper(sql).find("AND", between_pos + 7);
+        if (and_pos != std::string::npos) {
+            auto start_str = Trim(sql.substr(between_pos + 7, and_pos - between_pos - 7));
+            auto end_str = Trim(sql.substr(and_pos + 3));
+            // Remove quotes
+            auto clean = [](const std::string& s) {
+                if (s.size() >= 2 && s[0] == '\'') return s.substr(1, s.size() - 2);
+                return s;
+            };
+            stmt.time_range.start = ParseTimeString(clean(start_str));
+            stmt.time_range.end = ParseTimeString(clean(end_str));
+        }
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseUpdate(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    UpdateStmt stmt;
+    size_t pos = FindKeyword(sql, "UPDATE") + 6;
+    SkipWhitespace(sql, pos);
+    auto set_pos = ToUpper(sql).find("SET", pos);
+    if (set_pos == std::string::npos) return {false, "UPDATE requires SET", nullptr};
+    stmt.table_name = Trim(sql.substr(pos, set_pos - pos));
+    pos = set_pos + 3;
+    SkipWhitespace(sql, pos);
+    auto where_pos = ToUpper(sql).find("WHERE", pos);
+    if (where_pos == std::string::npos) return {false, "UPDATE requires WHERE", nullptr};
+    // Parse value
+    auto eq = sql.find('=', pos);
+    if (eq != std::string::npos && eq < where_pos) {
+        auto val_str = Trim(sql.substr(eq + 1, where_pos - eq - 1));
+        try { stmt.new_value = std::stod(val_str); } catch (...) {}
+    }
+    // Parse WHERE
+    pos = where_pos + 5;
+    auto tag_eq = sql.find("tag=", pos);
+    if (tag_eq != std::string::npos) {
+        tag_eq += 4;
+        SkipWhitespace(sql, tag_eq);
+        if (sql[tag_eq] == '\'') stmt.tag_filter = ExtractQuoted(sql, tag_eq);
+    }
+    auto ts_eq = sql.find("timestamp=", pos);
+    if (ts_eq == std::string::npos) ts_eq = sql.find("timestamp =", pos);
+    if (ts_eq != std::string::npos) {
+        ts_eq = sql.find('=', ts_eq) + 1;
+        SkipWhitespace(sql, ts_eq);
+        if (sql[ts_eq] == '\'') {
+            auto ts_str = ExtractQuoted(sql, ts_eq);
+            stmt.exact_time = ParseTimeString(ts_str);
+        }
+    }
+    *result = stmt;
+    return {true, "", result};
+}
+
+ParseResult SQLParser::ParseShow(const std::string& sql) {
+    auto result = std::make_shared<SQLStmt>();
+    ShowStmt stmt;
+    auto upper = ToUpper(sql);
+    if (upper.find("SHOW DATABASES") == 0) {
+        stmt.type = ShowStmt::Type::DATABASES;
+    } else if (upper.find("SHOW TABLES FROM") == 0) {
+        stmt.type = ShowStmt::Type::TABLES;
+        size_t pos = upper.find("FROM") + 4;
+        stmt.filter_db = Trim(sql.substr(pos));
+    } else if (upper.find("SHOW TABLES") == 0) {
+        stmt.type = ShowStmt::Type::TABLES;
+    } else if (upper.find("SHOW TAGS FROM") == 0) {
+        stmt.type = ShowStmt::Type::TAGS;
+        size_t pos = upper.find("FROM") + 4;
+        auto like_pos = ToUpper(sql).find("LIKE", pos);
+        if (like_pos != std::string::npos) {
+            stmt.filter_table = Trim(sql.substr(pos, like_pos - pos));
+            stmt.pattern = Trim(sql.substr(like_pos + 4));
+            // Clean quotes from pattern
+            if (stmt.pattern.size() >= 2 && stmt.pattern[0] == '\'')
+                stmt.pattern = stmt.pattern.substr(1, stmt.pattern.size() - 2);
+        } else {
+            stmt.filter_table = Trim(sql.substr(pos));
+        }
+    } else if (upper.find("SHOW TAGS") == 0) {
+        stmt.type = ShowStmt::Type::TAGS;
+    } else if (upper.find("SHOW USERS") == 0) {
+        stmt.type = ShowStmt::Type::USERS;
+    } else if (upper.find("SHOW ALARMS") == 0) {
+        stmt.type = ShowStmt::Type::ALARMS;
+    } else {
+        return {false, "Unknown SHOW type", nullptr};
+    }
+    *result = stmt;
+    return {true, "", result};
 }
 
 } // namespace minitsdb
