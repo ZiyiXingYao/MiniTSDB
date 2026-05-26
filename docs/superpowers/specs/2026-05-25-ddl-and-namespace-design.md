@@ -12,9 +12,13 @@
 - 三级命名空间：database → table → tag（`data/hot/<db>/tables/<table>/tags/<tag>/`）
 - 所有存储 API 增加 database/table 参数
 - 数据库管理：CREATE DATABASE / DROP DATABASE / USE
-- 表管理：CREATE TABLE / DROP TABLE / CREATE TAG (单个/批量) / DROP TAG
-- 用户/报警管理：DROP ALARM / DROP USER / ALTER USER / SHOW USERS
-- 写入时自动创建表（兼容简化使用，但 tag 仍需预注册或自动创建）
+- 表与测点管理：CREATE TABLE / DROP TABLE / CREATE TAG(s) / DROP TAG / ALTER TAG
+- 数据操作：DELETE FROM / UPDATE（按时间范围精确操作）
+- 用户管理：DROP USER / ALTER USER / SHOW USERS
+- 报警管理：DROP ALARM / SHOW ALARMS
+- 元数据查询：SHOW DATABASES / SHOW TABLES / SHOW TAGS
+- 时间精度：微秒（Timestamp 从毫秒改为微秒）
+- 写入时自动创建表（默认描述，tag 可选预注册）
 
 **非目标：**
 - 不做跨库查询
@@ -43,6 +47,27 @@
 ### 4. USE 的实现
 **选择**: 在 Executor 中维护 `current_db_` 状态，`USE` 切换后后续 SQL 自动应用
 **理由**: 与 MySQL `USE database` 语义一致，避免每条 SQL 都带数据库前缀。
+
+### 5. 时间精度
+**选择**: 微秒（μs），`Timestamp` 类型保持 `int64_t`，单位从毫秒改为微秒
+**理由**: 工业采集常见 100ms 间隔，微秒足够。毫秒提升到微秒不会影响 Gorilla 压缩效果。
+
+### 6. ALTER TAG 约束
+**选择**: 禁止修改 `type` 属性，其他属性（unit、precision、description 等）可修改
+**理由**: 修改数据类型会导致已存储数据被错误解释（如 double 当 int64 读）。
+
+### 7. 元数据查询
+**选择**: 使用 `SHOW` 命令系列替代系统表模式（如 PI 的 `pipoint..classic`）
+**理由**: 更简洁，与 MySQL 的 SHOW 系列语义一致。
+
+### 8. DELETE / UPDATE
+**选择**: 两者都支持
+- `DELETE FROM <table> WHERE tag='x' AND ts BETWEEN ...` — 按时间范围删除
+- `UPDATE <table> SET value = ... WHERE tag='x' AND ts = ...` — 修改指定时间点的值
+
+### 9. 等间隔插值
+**选择**: 不支持
+**理由**: Gorilla 压缩无损，原始数据完整可查，无需插值估算中间值。
 
 ## 存储模型变更
 
@@ -74,7 +99,9 @@ SQL: INSERT INTO boiler_temp (tag, value) VALUES ('BOILER-001', 523.7)
 → 缓存 key: "factory_a:boiler_temp:BOILER-001"
 ```
 
-## DDL 语法
+## SQL 语法参考
+
+### DDL — 数据定义
 
 ```sql
 -- 数据库管理
@@ -82,20 +109,21 @@ CREATE DATABASE <name>
 DROP DATABASE <name>
 USE <name>
 
--- 建表：仅定义分组信息，不限制测点类型
+-- 表管理
 CREATE TABLE <name> (
-    description='All boiler measurements',  -- 描述
-    location='Unit 1'                        -- 位置（可选）
+    description='All boiler measurements',
+    location='Unit 1'
 )
+DROP TABLE <name>
 
--- 注册测点（单个，带元数据）
+-- 测点注册（单个）
 CREATE TAG BOILER-TEMP IN TABLE boiler_data (
-    type='analog',          -- 数据类型说明见下方
-    unit='celsius',         -- 工程单位
-    precision=1             -- 小数位
+    type='analog',          -- analog/digital/string/accumulator
+    unit='celsius',
+    precision=1
 )
 
--- 注册测点（批量，每个测点独立指定类型）
+-- 测点注册（批量）
 CREATE TAGS IN TABLE boiler_data (
     BOILER-TEMP  (type='analog', unit='celsius', precision=1),
     BOILER-PRESS (type='analog', unit='kPa', precision=2),
@@ -103,16 +131,55 @@ CREATE TAGS IN TABLE boiler_data (
     BOILER-ALARM (type='string')
 )
 
--- 删除
-DROP TABLE <name>
-DROP TAG <table>.<tag>
+-- 测点管理
+DROP TAG <table>.<name>
+ALTER TAG <table>.<name> SET <property>='<value>'
+-- 注意：ALTER TAG 禁止修改 type 属性
+
+-- 报警/用户
 DROP ALARM <name>
 DROP USER <name>
-
--- 用户管理
 ALTER USER <name> SET PASSWORD '<new_pwd>'
 ALTER USER <name> SET ROLE admin|operator|viewer
+```
+
+### DML — 数据操作
+
+```sql
+-- 写入
+INSERT INTO <table> (tag, value, ts?) VALUES (...), (...), ...
+
+-- 查询（原始数据）
+SELECT <columns> FROM <table> WHERE tag = '<name>'
+    AND ts BETWEEN '<start>' AND '<end>'
+
+-- 查询（最新值）
+SELECT <columns> FROM <table> WHERE tag = '<name>' LATEST
+
+-- 查询（快照 - 系统表）
+SELECT tag, value, ts FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
+
+-- 聚合查询
+SELECT TIME_BUCKET('5m', ts) AS bucket, AVG(value)
+    FROM <table> WHERE tag = '<name>' AND ts BETWEEN ... GROUP BY bucket
+
+-- 删除（按时间范围）
+DELETE FROM <table> WHERE tag = '<name>' AND ts BETWEEN '<start>' AND '<end>'
+
+-- 更新（修改指定时间点的值）
+UPDATE <table> SET value = <new_val> WHERE tag = '<name>' AND ts = '<exact_time>'
+```
+
+### SHOW — 元数据查询
+
+```sql
+SHOW DATABASES
+SHOW TABLES                    -- 当前数据库
+SHOW TABLES FROM <database>    -- 指定数据库
+SHOW TAGS FROM <table>         -- 表下所有测点
+SHOW TAGS FROM <table> LIKE '<pattern>'  -- 模式匹配
 SHOW USERS
+SHOW ALARMS
 ```
 
 ## 测点数据类型
