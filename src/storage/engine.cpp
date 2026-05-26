@@ -305,4 +305,61 @@ void StorageEngine::Close() {
     }
 }
 
+// ============================================================
+//  三级命名空间路径与删除
+// ============================================================
+
+std::string StorageEngine::GetTablePath(const std::string& db,
+                                         const std::string& table) const {
+    return config_.hot_path + "/" + db + "/tables/" + table;
+}
+
+std::string StorageEngine::GetTagPath(const std::string& db,
+                                       const std::string& table,
+                                       const std::string& tag) const {
+    return GetTablePath(db, table) + "/tags/" + tag;
+}
+
+bool StorageEngine::TagExists(const std::string& db,
+                               const std::string& table,
+                               const std::string& tag) const {
+    return os::fs::Exists(GetTagPath(db, table, tag));
+}
+
+bool StorageEngine::DropTable(const std::string& db,
+                               const std::string& table) {
+    // 删除热存
+    auto hot_table = GetTablePath(db, table);
+    if (os::fs::Exists(hot_table)) {
+        os::fs::RemoveAll(hot_table);
+        LOG_INFO("Dropped table: {}/{} (hot)", db, table);
+    }
+    // 删除冷存
+    std::string cold_table = config_.cold_path + "/" + db + "/tables/" + table;
+    if (os::fs::Exists(cold_table)) {
+        os::fs::RemoveAll(cold_table);
+        LOG_INFO("Dropped table: {}/{} (cold)", db, table);
+    }
+    return true;
+}
+
+bool StorageEngine::DropTag(const std::string& db,
+                             const std::string& table,
+                             const std::string& tag) {
+    // 删除热存
+    auto hot_tag = GetTagPath(db, table, tag);
+    if (os::fs::Exists(hot_tag)) {
+        os::fs::RemoveAll(hot_tag);
+        LOG_INFO("Dropped tag: {}/{}/{} (hot)", db, table, tag);
+    }
+    // 删除冷存
+    std::string cold_tag = config_.cold_path + "/" + db + "/tables/"
+                           + table + "/tags/" + tag;
+    if (os::fs::Exists(cold_tag)) {
+        os::fs::RemoveAll(cold_tag);
+        LOG_INFO("Dropped tag: {}/{}/{} (cold)", db, table, tag);
+    }
+    return true;
+}
+
 } // namespace minitsdb
