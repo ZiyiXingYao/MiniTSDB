@@ -162,6 +162,7 @@ SELECT tag, value, timestamp FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
 -- 聚合查询
 SELECT TIME_BUCKET('5m', timestamp) AS bucket, AVG(value)
     FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN ... GROUP BY bucket
+-- 支持的聚合函数：AVG, MAX, MIN, SUM, COUNT, FIRST, LAST, STDDEV
 
 -- 删除（按时间范围）
 DELETE FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN '<start>' AND '<end>'
