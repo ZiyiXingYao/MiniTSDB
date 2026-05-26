@@ -141,6 +141,8 @@ ALTER TAG <table>.<name> SET <property>='<value>'         -- 禁改 type
 CREATE ALARM <name> ON <tag>
     WHEN value <op> <threshold>
     ACTION '<action1>', '<action2>'
+ALTER ALARM <name> SET condition='value > 1500.0'
+ALTER ALARM <name> SET action='log', 'email'
 DROP ALARM <name>
 
 -- ── 用户管理 ──
