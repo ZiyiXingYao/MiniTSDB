@@ -62,8 +62,8 @@
 
 ### 8. DELETE / UPDATE
 **选择**: 两者都支持
-- `DELETE FROM <table> WHERE tag='x' AND ts BETWEEN ...` — 按时间范围删除
-- `UPDATE <table> SET value = ... WHERE tag='x' AND ts = ...` — 修改指定时间点的值
+- `DELETE FROM <table> WHERE tag='x' AND timestamp BETWEEN ...` — 按时间范围删除
+- `UPDATE <table> SET value = ... WHERE tag='x' AND timestamp = ...` — 修改指定时间点的值
 
 ### 9. 等间隔插值
 **选择**: 不支持
@@ -147,27 +147,27 @@ ALTER USER <name> SET ROLE admin|operator|viewer
 
 ```sql
 -- 写入
-INSERT INTO <table> (tag, value, ts?) VALUES (...), (...), ...
+INSERT INTO <table> (tag, value, timestamp?) VALUES (...), (...), ...
 
 -- 查询（原始数据）
 SELECT <columns> FROM <table> WHERE tag = '<name>'
-    AND ts BETWEEN '<start>' AND '<end>'
+    AND timestamp BETWEEN '<start>' AND '<end>'
 
 -- 查询（最新值）
 SELECT <columns> FROM <table> WHERE tag = '<name>' LATEST
 
 -- 查询（快照 - 系统表）
-SELECT tag, value, ts FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
+SELECT tag, value, timestamp FROM SNAPSHOT WHERE tag LIKE 'BOILER-%'
 
 -- 聚合查询
-SELECT TIME_BUCKET('5m', ts) AS bucket, AVG(value)
-    FROM <table> WHERE tag = '<name>' AND ts BETWEEN ... GROUP BY bucket
+SELECT TIME_BUCKET('5m', timestamp) AS bucket, AVG(value)
+    FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN ... GROUP BY bucket
 
 -- 删除（按时间范围）
-DELETE FROM <table> WHERE tag = '<name>' AND ts BETWEEN '<start>' AND '<end>'
+DELETE FROM <table> WHERE tag = '<name>' AND timestamp BETWEEN '<start>' AND '<end>'
 
 -- 更新（修改指定时间点的值）
-UPDATE <table> SET value = <new_val> WHERE tag = '<name>' AND ts = '<exact_time>'
+UPDATE <table> SET value = <new_val> WHERE tag = '<name>' AND timestamp = '<exact_time>'
 ```
 
 ### SHOW — 元数据查询
