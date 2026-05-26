@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <variant>
+#include <utility>
 
 namespace minitsdb {
 
@@ -91,14 +92,118 @@ struct CreateUserStmt : ASTNode {
     std::string role;  // admin, operator, viewer
 };
 
+// ── 新增 DDL 语句 ──
+
+// DROP TAG <table>.<tag>
+struct DropTagStmt : ASTNode {
+    std::string table_name;
+    std::string tag_name;
+};
+
+// DROP ALARM <name>
+struct DropAlarmStmt : ASTNode {
+    std::string alarm_name;
+};
+
+// DROP USER <name>
+struct DropUserStmt : ASTNode {
+    std::string username;
+};
+
+// DROP TABLE <name>
+struct DropTableStmt : ASTNode {
+    std::string table_name;
+};
+
+// CREATE DATABASE <name>
+struct CreateDatabaseStmt : ASTNode {
+    std::string db_name;
+};
+
+// DROP DATABASE <name>
+struct DropDatabaseStmt : ASTNode {
+    std::string db_name;
+};
+
+// USE <name>
+struct UseStmt : ASTNode {
+    std::string db_name;
+};
+
+// CREATE TABLE <name> (properties...)
+struct CreateTableStmt : ASTNode {
+    std::string table_name;
+    std::vector<std::pair<std::string, std::string>> properties;
+};
+
+// CREATE TAG <tag> IN TABLE <table> (...)  / CREATE TAGS IN TABLE <table> (...)
+struct CreateTagsStmt : ASTNode {
+    std::string table_name;
+    struct TagDef {
+        std::string name;
+        std::vector<std::pair<std::string, std::string>> props;
+    };
+    std::vector<TagDef> tags;
+};
+
+// ALTER TAG <table>.<tag> SET <prop>='<value>'
+struct AlterTagStmt : ASTNode {
+    std::string table_name;
+    std::string tag_name;
+    std::string property;
+    std::string value;
+};
+
+// ALTER ALARM <name> SET <prop>='<value>'
+struct AlterAlarmStmt : ASTNode {
+    std::string alarm_name;
+    std::string property;
+    std::string value;
+};
+
+// ALTER USER <name> SET <prop>='<value>'
+struct AlterUserStmt : ASTNode {
+    std::string username;
+    std::string property;
+    std::string value;
+};
+
+// DELETE FROM <table> WHERE tag='<name>' AND timestamp BETWEEN ...
+struct DeleteStmt : ASTNode {
+    std::string table_name;
+    std::string tag_filter;
+    TimeRange time_range;
+};
+
+// UPDATE <table> SET value=<new> WHERE tag='<name>' AND timestamp='<ts>'
+struct UpdateStmt : ASTNode {
+    std::string table_name;
+    std::string tag_filter;
+    Timestamp exact_time = 0;
+    double new_value = 0.0;
+};
+
+// SHOW DATABASES / TABLES / TAGS / USERS / ALARMS
+struct ShowStmt : ASTNode {
+    enum class Type {
+        DATABASES, TABLES, TAGS, USERS, ALARMS
+    };
+    Type type;
+    std::string filter_db;
+    std::string filter_table;
+    std::string pattern;       // LIKE 模式匹配
+};
+
 // ---------- 顶层语句变体 ----------
 using SQLStmt = std::variant<
-    InsertStmt,
-    SelectStmt,
-    CreateTagStmt,
-    CreateAlarmStmt,
+    InsertStmt, SelectStmt,
+    CreateTagStmt, CreateAlarmStmt, CreateUserStmt,
     AlterSystemStmt,
-    CreateUserStmt
+    DropTagStmt, DropAlarmStmt, DropUserStmt,
+    DropTableStmt, DropDatabaseStmt,
+    CreateDatabaseStmt, UseStmt, CreateTableStmt,
+    CreateTagsStmt, AlterTagStmt, AlterAlarmStmt, AlterUserStmt,
+    DeleteStmt, UpdateStmt, ShowStmt
 >;
 
 // ---------- 解析结果 ----------
@@ -111,13 +216,12 @@ struct ParseResult {
 // ---------- 查询计划 ----------
 struct QueryPlan {
     enum class Type {
-        INSERT,
-        SELECT_LATEST,        // 走最新值缓存
-        SELECT_RAW,           // 原始数据查询
-        SELECT_AGGREGATE,     // 聚合查询
-        CREATE_TAG,
-        CREATE_ALARM,
-        ALTER_SYSTEM
+        INSERT, SELECT_LATEST, SELECT_RAW, SELECT_AGGREGATE, SELECT_SNAPSHOT,
+        CREATE_TAG, CREATE_ALARM, ALTER_SYSTEM,
+        DROP_TAG, DROP_ALARM, DROP_USER, DROP_TABLE, DROP_DATABASE,
+        CREATE_DATABASE, USE, CREATE_TABLE, CREATE_TAGS,
+        ALTER_TAG, ALTER_ALARM, ALTER_USER,
+        DELETE_STMT, UPDATE_STMT, SHOW_INFO
     };
 
     Type type;
