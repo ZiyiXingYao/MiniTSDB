@@ -18,7 +18,7 @@
 - 报警管理：DROP ALARM / SHOW ALARMS
 - 元数据查询：SHOW DATABASES / SHOW TABLES / SHOW TAGS
 - 时间精度：微秒（Timestamp 从毫秒改为微秒）
-- 写入时自动创建表（默认描述，tag 可选预注册）
+- 严格预注册：必须先 CREATE TABLE/CREATE TAG 才能写入，不存在的表或测点返回错误
 
 **非目标：**
 - 不做跨库查询
@@ -33,12 +33,11 @@
 **理由**: PI System 使用点（tag）+ 点所在的集合（类似于 table），工业现场天然按工厂/装置/测点分层。
 
 ### 2. 写入时自动创建 vs 预注册
-**选择**: 两者都支持
-- 首次 `INSERT INTO <table>` 若表不存在，自动创建（默认描述）
-- `CREATE TABLE` 可显式定义表的描述信息（description, location 等）
-- `CREATE TAG` / `CREATE TAGS` 用于预注册测点及其元数据
-- 类型、单位、精度等元数据是**测点级**的属性，不是表级的
-**理由**: 一张表可以包含不同数据类型的测点（温度 analog、状态 digital、报警码 string），类型约束在测点级别而非表级别。工业场景需要显式元数据管理，但简化场景下"写了就有"更友好。
+**选择**: 仅支持显式预注册
+- 必须先 `CREATE TABLE` 再 `INSERT`
+- 必须先 `CREATE TAG(s) IN TABLE` 再写入该测点的数据
+- 写入不存在的表或测点时返回错误
+**理由**: 对标 PI System，测点必须预注册。自动创建会导致元数据缺失（类型、单位、精度），且与工业现场的管理流程不匹配。
 
 ### 3. DROP TAG 语法
 **选择**: `DROP TAG <table>.<tag>` 以限定表范围
