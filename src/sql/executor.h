@@ -28,11 +28,15 @@ public:
              std::shared_ptr<LatestCache> cache,
              std::shared_ptr<AuthManager> auth = nullptr);
 
-    // 执行一条 SQL 语句
     QueryResult Execute(const SQLStmt& stmt);
-
-    // 通过 SQL 字符串直接执行（Parse + Execute）
     QueryResult ExecuteSQL(const std::string& sql);
+
+    // 设置当前数据库（USE 语句）
+    void SetCurrentDB(const std::string& db) { current_db_ = db; }
+    const std::string& GetCurrentDB() const { return current_db_; }
+
+    // 设置当前 token（用于权限检查）
+    void SetToken(const std::string& token) { token_ = token; }
 
 private:
     QueryResult ExecuteInsert(const InsertStmt& stmt);
@@ -41,12 +45,38 @@ private:
     QueryResult ExecuteSelectRaw(const SelectStmt& stmt);
     QueryResult ExecuteSelectAggregate(const SelectStmt& stmt);
     QueryResult ExecuteSnapshot(const SelectStmt& stmt);
+
+    // 已有
     QueryResult ExecuteCreateTag(const CreateTagStmt& stmt);
     QueryResult ExecuteCreateAlarm(const CreateAlarmStmt& stmt);
     QueryResult ExecuteCreateUser(const CreateUserStmt& stmt);
     QueryResult ExecuteAlterSystem(const AlterSystemStmt& stmt);
 
-    // 格式化输出
+    // 新增 DDL
+    QueryResult ExecuteDropTag(const DropTagStmt& stmt);
+    QueryResult ExecuteDropAlarm(const DropAlarmStmt& stmt);
+    QueryResult ExecuteDropUser(const DropUserStmt& stmt);
+    QueryResult ExecuteDropTable(const DropTableStmt& stmt);
+    QueryResult ExecuteDropDatabase(const DropDatabaseStmt& stmt);
+    QueryResult ExecuteCreateDatabase(const CreateDatabaseStmt& stmt);
+    QueryResult ExecuteUse(const UseStmt& stmt);
+    QueryResult ExecuteCreateTable(const CreateTableStmt& stmt);
+    QueryResult ExecuteCreateTags(const CreateTagsStmt& stmt);
+    QueryResult ExecuteAlterTag(const AlterTagStmt& stmt);
+    QueryResult ExecuteAlterAlarm(const AlterAlarmStmt& stmt);
+    QueryResult ExecuteAlterUser(const AlterUserStmt& stmt);
+
+    // 新增 DML
+    QueryResult ExecuteDelete(const DeleteStmt& stmt);
+    QueryResult ExecuteUpdate(const UpdateStmt& stmt);
+
+    // 新增 SHOW
+    QueryResult ExecuteShow(const ShowStmt& stmt);
+
+    // 权限检查
+    bool CheckPermission(const std::string& operation);
+    std::string GetOperationName(const SQLStmt& stmt);
+
     std::string FormatValue(const DataPoint& point);
     std::string FormatTimestamp(Timestamp ts);
 
@@ -54,6 +84,8 @@ private:
     std::shared_ptr<LatestCache> cache_;
     std::shared_ptr<AuthManager> auth_;
     SQLParser parser_;
+    std::string current_db_;
+    std::string token_;
 };
 
 } // namespace minitsdb

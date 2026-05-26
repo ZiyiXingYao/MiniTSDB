@@ -15,6 +15,14 @@ Executor::Executor(std::shared_ptr<StorageEngine> engine,
     : engine_(std::move(engine)), cache_(std::move(cache)), auth_(std::move(auth)) {}
 
 QueryResult Executor::Execute(const SQLStmt& stmt) {
+    // Permission check
+    if (!token_.empty() && auth_) {
+        auto op = GetOperationName(stmt);
+        if (!op.empty() && !auth_->CheckPermission(token_, op)) {
+            return {false, "Permission denied: " + op, {}, {}, 0};
+        }
+    }
+
     return std::visit([this](const auto& s) -> QueryResult {
         using T = std::decay_t<decltype(s)>;
         if constexpr (std::is_same_v<T, InsertStmt>)
@@ -29,6 +37,36 @@ QueryResult Executor::Execute(const SQLStmt& stmt) {
             return ExecuteAlterSystem(s);
         else if constexpr (std::is_same_v<T, CreateUserStmt>)
             return ExecuteCreateUser(s);
+        else if constexpr (std::is_same_v<T, DropTagStmt>)
+            return ExecuteDropTag(s);
+        else if constexpr (std::is_same_v<T, DropAlarmStmt>)
+            return ExecuteDropAlarm(s);
+        else if constexpr (std::is_same_v<T, DropUserStmt>)
+            return ExecuteDropUser(s);
+        else if constexpr (std::is_same_v<T, DropTableStmt>)
+            return ExecuteDropTable(s);
+        else if constexpr (std::is_same_v<T, DropDatabaseStmt>)
+            return ExecuteDropDatabase(s);
+        else if constexpr (std::is_same_v<T, CreateDatabaseStmt>)
+            return ExecuteCreateDatabase(s);
+        else if constexpr (std::is_same_v<T, UseStmt>)
+            return ExecuteUse(s);
+        else if constexpr (std::is_same_v<T, CreateTableStmt>)
+            return ExecuteCreateTable(s);
+        else if constexpr (std::is_same_v<T, CreateTagsStmt>)
+            return ExecuteCreateTags(s);
+        else if constexpr (std::is_same_v<T, AlterTagStmt>)
+            return ExecuteAlterTag(s);
+        else if constexpr (std::is_same_v<T, AlterAlarmStmt>)
+            return ExecuteAlterAlarm(s);
+        else if constexpr (std::is_same_v<T, AlterUserStmt>)
+            return ExecuteAlterUser(s);
+        else if constexpr (std::is_same_v<T, DeleteStmt>)
+            return ExecuteDelete(s);
+        else if constexpr (std::is_same_v<T, UpdateStmt>)
+            return ExecuteUpdate(s);
+        else if constexpr (std::is_same_v<T, ShowStmt>)
+            return ExecuteShow(s);
         else
             return {false, "Unknown statement type", {}, {}, 0};
     }, stmt);
@@ -432,6 +470,207 @@ std::string Executor::FormatTimestamp(Timestamp ts) {
     std::ostringstream oss;
     oss << buf << "." << std::setfill('0') << std::setw(6) << us;
     return oss.str();
+}
+
+// ── 操作名映射（权限检查用） ──
+std::string Executor::GetOperationName(const SQLStmt& stmt) {
+    return std::visit([](const auto& s) -> std::string {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, InsertStmt>) return "INSERT";
+        else if constexpr (std::is_same_v<T, SelectStmt>) return "SELECT";
+        else if constexpr (std::is_same_v<T, CreateTagStmt>) return "CREATE TAG";
+        else if constexpr (std::is_same_v<T, CreateAlarmStmt>) return "CREATE ALARM";
+        else if constexpr (std::is_same_v<T, CreateUserStmt>) return "CREATE USER";
+        else if constexpr (std::is_same_v<T, AlterSystemStmt>) return "ALTER SYSTEM";
+        else if constexpr (std::is_same_v<T, DropTagStmt>) return "DROP TAG";
+        else if constexpr (std::is_same_v<T, DropAlarmStmt>) return "DROP ALARM";
+        else if constexpr (std::is_same_v<T, DropUserStmt>) return "DROP USER";
+        else if constexpr (std::is_same_v<T, DropTableStmt>) return "DROP TABLE";
+        else if constexpr (std::is_same_v<T, DropDatabaseStmt>) return "DROP DATABASE";
+        else if constexpr (std::is_same_v<T, CreateDatabaseStmt>) return "CREATE DATABASE";
+        else if constexpr (std::is_same_v<T, CreateTableStmt>) return "CREATE TABLE";
+        else if constexpr (std::is_same_v<T, CreateTagsStmt>) return "CREATE TAGS";
+        else if constexpr (std::is_same_v<T, AlterTagStmt>) return "ALTER TAG";
+        else if constexpr (std::is_same_v<T, AlterAlarmStmt>) return "ALTER ALARM";
+        else if constexpr (std::is_same_v<T, AlterUserStmt>) return "ALTER USER";
+        else if constexpr (std::is_same_v<T, DeleteStmt>) return "DELETE";
+        else if constexpr (std::is_same_v<T, UpdateStmt>) return "UPDATE";
+        else if constexpr (std::is_same_v<T, ShowStmt>) return "SHOW";
+        else return "";
+    }, stmt);
+}
+
+bool Executor::CheckPermission(const std::string& operation) {
+    if (!auth_ || token_.empty()) return true;
+    return auth_->CheckPermission(token_, operation);
+}
+
+// ── 新增 DDL 执行 ──
+
+QueryResult Executor::ExecuteDropTag(const DropTagStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    engine_->DropTag(current_db_, stmt.table_name, stmt.tag_name);
+    LOG_INFO("Dropped tag {} from table {}", stmt.tag_name, stmt.table_name);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteDropAlarm(const DropAlarmStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    auto* alarm = engine_->GetAlarmEngine();
+    if (!alarm) return {false, "Alarm engine not available"};
+    alarm->RemoveRule(stmt.alarm_name);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteDropUser(const DropUserStmt& stmt) {
+    if (!auth_) return {false, "Auth not available"};
+    if (!auth_->DropUser(token_, stmt.username))
+        return {false, "Failed to drop user (admin only / last admin / not found)", {}, {}, 0};
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteDropTable(const DropTableStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    engine_->DropTable(current_db_, stmt.table_name);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteDropDatabase(const DropDatabaseStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    engine_->DropTable(current_db_, "");  // Delete whole db directory
+    auto db_path = engine_->GetTagPath(stmt.db_name, "", "");
+    auto parent = db_path.substr(0, db_path.find(stmt.db_name + "/tables/"));
+    os::fs::RemoveAll(parent + stmt.db_name);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteCreateDatabase(const CreateDatabaseStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    auto db = stmt.db_name;
+    if (db.empty()) return {false, "Database name required"};
+    os::fs::CreateDirectories(engine_->GetTagPath(db, "", ""));
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteUse(const UseStmt& stmt) {
+    current_db_ = stmt.db_name;
+    return {true, "", {"message"}, {std::vector<std::string>{"OK"}}, 1};
+}
+
+QueryResult Executor::ExecuteCreateTable(const CreateTableStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    auto path = engine_->GetTagPath(current_db_, stmt.table_name, "");
+    os::fs::CreateDirectories(path);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteCreateTags(const CreateTagsStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    for (const auto& tag_def : stmt.tags) {
+        auto path = engine_->GetTagPath(current_db_, stmt.table_name, tag_def.name);
+        os::fs::CreateDirectories(path);
+    }
+    return {true, "", {}, {}, static_cast<int64_t>(stmt.tags.size())};
+}
+
+QueryResult Executor::ExecuteAlterTag(const AlterTagStmt& stmt) {
+    return {true, "", {"message"}, {std::vector<std::string>{"OK"}}, 1};
+}
+
+QueryResult Executor::ExecuteAlterAlarm(const AlterAlarmStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    auto* alarm = engine_->GetAlarmEngine();
+    if (!alarm) return {false, "Alarm engine not available"};
+    if (!alarm->AlterRule(stmt.alarm_name, stmt.property, stmt.value))
+        return {false, "Failed to alter alarm", {}, {}, 0};
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteAlterUser(const AlterUserStmt& stmt) {
+    if (!auth_) return {false, "Auth not available"};
+    if (!auth_->AlterUser(token_, stmt.username, stmt.property, stmt.value))
+        return {false, "Failed to alter user (admin only / not found)", {}, {}, 0};
+    return {true, "", {}, {}, 1};
+}
+
+// ── 新增 DML 执行 ──
+
+QueryResult Executor::ExecuteDelete(const DeleteStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    engine_->DropTag(current_db_, stmt.table_name, stmt.tag_filter);
+    return {true, "", {}, {}, 1};
+}
+
+QueryResult Executor::ExecuteUpdate(const UpdateStmt& stmt) {
+    if (!engine_) return {false, "Engine not available"};
+    // Simple: drop and re-insert
+    engine_->DropTag(current_db_, stmt.table_name, stmt.tag_filter);
+    DataPoint p;
+    p.ts = stmt.exact_time;
+    p.value = stmt.new_value;
+    engine_->Write(current_db_ + ":" + stmt.table_name + ":" + stmt.tag_filter,
+                   DataPoint{stmt.exact_time, static_cast<double>(stmt.new_value)});
+    return {true, "", {}, {}, 1};
+}
+
+// ── SHOW 执行 ──
+
+QueryResult Executor::ExecuteShow(const ShowStmt& stmt) {
+    switch (stmt.type) {
+        case ShowStmt::Type::DATABASES: {
+            QueryResult res;
+            res.column_names = {"Database"};
+            std::vector<os::fs::DirEntry> entries;
+            if (os::fs::ListDirectory("./data/hot", entries)) {
+                for (auto& e : entries) {
+                    if (e.is_directory)
+                        res.rows.push_back({e.name});
+                }
+            }
+            if (res.rows.empty()) res.rows.push_back({"default"});
+            return res;
+        }
+        case ShowStmt::Type::TABLES: {
+            QueryResult res;
+            res.column_names = {"Table"};
+            return res;
+        }
+        case ShowStmt::Type::TAGS: {
+            QueryResult res;
+            res.column_names = {"Tag"};
+            return res;
+        }
+        case ShowStmt::Type::USERS: {
+            if (!auth_) return {false, "Auth not available"};
+            auto users = auth_->GetUsers(token_);
+            QueryResult res;
+            res.column_names = {"username", "role"};
+            for (const auto& u : users) {
+                std::string role_str = (u.role == UserRole::ADMIN) ? "admin" :
+                    (u.role == UserRole::OPERATOR) ? "operator" : "viewer";
+                res.rows.push_back({u.name, role_str});
+            }
+            return res;
+        }
+        case ShowStmt::Type::ALARMS: {
+            if (!engine_) return {false, "Engine not available"};
+            auto* alarm = engine_->GetAlarmEngine();
+            if (!alarm) return {false, "Alarm engine not available"};
+            auto rules = alarm->GetRules();
+            QueryResult res;
+            res.column_names = {"name", "tag", "condition", "actions"};
+            for (const auto& r : rules) {
+                std::string actions;
+                for (size_t i = 0; i < r.actions.size(); i++) {
+                    if (i > 0) actions += ",";
+                    actions += r.actions[i];
+                }
+                res.rows.push_back({r.name, r.tag_name, r.condition, actions});
+            }
+            return res;
+        }
+    }
+    return {false, "Unknown SHOW type", {}, {}, 0};
 }
 
 } // namespace minitsdb
