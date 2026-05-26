@@ -90,7 +90,7 @@ CREATE TABLE <name> (
 
 -- 注册测点（单个，带元数据）
 CREATE TAG BOILER-TEMP IN TABLE boiler_data (
-    type='analog',          -- 数据类型：analog/digital/string/accumulator
+    type='analog',          -- 数据类型说明见下方
     unit='celsius',         -- 工程单位
     precision=1             -- 小数位
 )
@@ -114,6 +114,17 @@ ALTER USER <name> SET PASSWORD '<new_pwd>'
 ALTER USER <name> SET ROLE admin|operator|viewer
 SHOW USERS
 ```
+
+## 测点数据类型
+
+测点类型（`type` 属性）决定了该测点在存储和查询时的物理数据类型和行为语义：
+
+| 类型 | 含义 | 物理类型 | 工业场景举例 |
+|------|------|---------|-------------|
+| `analog` | 模拟量，连续数值 | `double` | 温度 523.7°C、压力 12.5 kPa、转速 3000 rpm |
+| `digital` | 数字量/开关量 | `int64` | 阀门 0=关/1=开、设备停机/运行 |
+| `string` | 字符串量 | `std::string` | 报警码 "E-001"、操作记录 |
+| `accumulator` | 累加量，单调递增 | `int64` | 累计发电量 12345 kWh、运行时长 9876 h |
 
 ## 风险 / 权衡
 
