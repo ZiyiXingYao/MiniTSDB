@@ -4,11 +4,11 @@
 TBD - created by archiving change minitsdb-core-engine. Update Purpose after archive.
 ## Requirements
 ### Requirement: Latest value cache SHALL be updated on every write
-Every successful write to the storage engine SHALL also update the in-memory latest value cache.
+Every successful write to the storage engine SHALL also update the in-memory latest value cache. The cache key SHALL use `db:table:tag` format.
 
 #### Scenario: Update cache after write
-- **WHEN** a DataPoint is written for tag BOILER-001 at timestamp T with value 523.7
-- **THEN** the latest cache SHALL reflect (BOILER-001, 523.7, T)
+- **WHEN** a DataPoint is written for tag BOILER-001 in table boiler_data, database factory_a
+- **THEN** the internal cache key SHALL be `"factory_a:boiler_data:BOILER-001"`
 
 #### Scenario: Overwrite with newer value
 - **WHEN** a DataPoint with a newer timestamp is written for BOILER-001

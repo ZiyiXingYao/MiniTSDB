@@ -12,7 +12,7 @@ Each MemTable SHALL accept writes grouped by Tag name. When the MemTable reaches
 
 #### Scenario: Flush creates SSTable file
 - **WHEN** MemTable flush interval elapses
-- **THEN** a new SSTable file SHALL be created at `data/hot/tags/<tag-name>/<date>.sst`
+- **THEN** a new SSTable file SHALL be created at `data/hot/<database>/tables/<table>/tags/<tag>/<date>.sst`
 
 ### Requirement: WAL SHALL persist writes before acknowledging
 Every write SHALL be appended to the Write-Ahead Log before being applied to MemTable. On recovery, the WAL SHALL replay to restore MemTable state.
@@ -41,4 +41,18 @@ Naming, formatting, comments, and file organization SHALL conform to https://goo
 #### Scenario: Code review checks style compliance
 - **WHEN** reviewing a pull request for the storage engine module
 - **THEN** all identifiers SHALL use Google-style naming (classes: PascalCase, variables/functions: snake_case, constants: kPascalCase)
+
+### Requirement: Storage paths SHALL use three-level naming
+All storage paths SHALL change from `data/hot/tags/<tag>/` to `data/hot/<database>/tables/<table>/tags/<tag>/`.
+
+#### Scenario: Write with database context
+- **WHEN** writing data to table boiler_data with current database factory_a
+- **THEN** data storage path SHALL be `data/hot/factory_a/tables/boiler_data/tags/BOILER-001/<date>.sst`
+
+### Requirement: Storage engine APIs SHALL accept database and table parameters
+StorageEngine::Write, ReadRaw, ReadAggregated, ReadLatest SHALL accept `db` and `table` string parameters in addition to `tag`.
+
+#### Scenario: Write with three-level path
+- **WHEN** calling `engine->Write("factory_a", "boiler_data", "BOILER-001", point)`
+- **THEN** data SHALL be correctly written to the three-level path
 

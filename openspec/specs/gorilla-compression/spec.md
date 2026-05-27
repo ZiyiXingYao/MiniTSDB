@@ -7,7 +7,7 @@ TBD - created by archiving change minitsdb-core-engine. Update Purpose after arc
 The compressor SHALL encode consecutive timestamps by computing delta-of-delta values and using variable-length bit encoding per the Gorilla paper. Stable-interval data points (where delta-delta == 0) SHALL use 1 bit.
 
 #### Scenario: Encode stable 1-second interval timestamps
-- **WHEN** encoding timestamps at exact 1-second intervals (t=1000, 2000, 3000, ...)
+- **WHEN** encoding timestamps at exact 1-second intervals (t=1000000, 2000000, 3000000, ...)
 - **THEN** each subsequent timestamp SHALL be encoded in 1 bit
 
 #### Scenario: Encode timestamps with jitter
@@ -35,4 +35,11 @@ The BlockCompressor SHALL handle analog (double), digital (int64), string, and a
 #### Scenario: Decompress yields identical data
 - **WHEN** decompressing a CompressedBlock
 - **THEN** all original DataPoint values SHALL be recovered with zero loss
+
+### Requirement: Timestamp precision SHALL be microsecond
+All timestamps SHALL use microsecond precision (int64_t, unit changed from ms to μs).
+
+#### Scenario: Compression with microsecond timestamps
+- **WHEN** compressing a sequence of microsecond-precision timestamps
+- **THEN** the compressor SHALL correctly handle larger delta-delta values
 

@@ -6,10 +6,10 @@ Dedicated in-memory snapshot storage for real-time tag values, with Protobuf-bas
 ## ADDED Requirements
 
 ### 需求:SnapshotStore 必须缓存所有 tag 的最新值
-SnapshotStore 必须在内存中维护所有已注册 tag 的最新值，支持单个 tag 查询、LIKE 模式批量查询和全量导出。查询延迟必须 < 100μs。
+SnapshotStore 必须在内存中维护所有已注册 tag 的最新值，支持单个 tag 查询、LIKE 模式批量查询和全量导出。查询延迟必须 < 100μs。内部 key 格式为 `db:table:tag`。
 
 #### 场景:单点查询
-- **当** 查询已存在 tag 的最新值
+- **当** 使用 `Get("factory_a", "boiler_data", "BOILER-001")` 查询已存在 tag
 - **那么** 返回该 tag 的最近一次 DataPoint（时间戳和值）
 
 #### 场景:查询不存在的 tag
