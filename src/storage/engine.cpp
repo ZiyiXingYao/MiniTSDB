@@ -320,6 +320,11 @@ std::string StorageEngine::GetTagPath(const std::string& db,
     return GetTablePath(db, table) + "/tags/" + tag;
 }
 
+bool StorageEngine::TableExists(const std::string& db,
+                                 const std::string& table) const {
+    return os::fs::Exists(GetTablePath(db, table));
+}
+
 bool StorageEngine::TagExists(const std::string& db,
                                const std::string& table,
                                const std::string& tag) const {

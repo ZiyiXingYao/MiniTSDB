@@ -85,6 +85,14 @@ QueryResult Executor::ExecuteInsert(const InsertStmt& stmt) {
         return {false, "No values to insert", {}, {}, 0};
     }
 
+    // 严格预注册检查
+    if (engine_) {
+        if (!engine_->TableExists(current_db_, stmt.table_name)) {
+            return {false, "Table not found: " + stmt.table_name +
+                    ". Use CREATE TABLE first.", {}, {}, 0};
+        }
+    }
+
     int64_t count = 0;
     std::vector<DataBatch> batches;
 
@@ -208,6 +216,24 @@ QueryResult Executor::ExecuteSelectRaw(const SelectStmt& stmt) {
     TimeRange range = stmt.where.time_range;
 
     auto points = engine_->ReadRaw(tag, range);
+
+    // ORDER BY
+    if (!stmt.order_by.empty()) {
+        if (stmt.order_by == "timestamp" || stmt.order_by == "ts") {
+            if (stmt.order_asc) {
+                std::sort(points.begin(), points.end(),
+                    [](const DataPoint& a, const DataPoint& b) { return a.ts < b.ts; });
+            } else {
+                std::sort(points.begin(), points.end(),
+                    [](const DataPoint& a, const DataPoint& b) { return a.ts > b.ts; });
+            }
+        }
+    }
+
+    // LIMIT
+    if (stmt.limit > 0 && static_cast<size_t>(stmt.limit) < points.size()) {
+        points.resize(stmt.limit);
+    }
 
     for (const auto& p : points) {
         std::vector<std::string> row;
@@ -507,6 +533,23 @@ bool Executor::CheckPermission(const std::string& operation) {
 
 // ── 新增 DDL 执行 ──
 
+// 命名校验
+static bool IsValidName(const std::string& name, size_t max_len) {
+    if (name.empty() || name.size() > max_len) return false;
+    if (name[0] == '-' || name[0] == '_') return false;
+    for (char c : name) {
+        if (!std::isalnum(c) && c != '_' && c != '-') return false;
+    }
+    return true;
+}
+
+// 命名校验宏（仅用于 std::string 类型，会赋值给成员变量，暂时保留 string 对象，避免 Copy...）
+#define RETURN_IF_INVALID(name, max_len, label) \
+    do { \
+        if (!IsValidName(name, max_len)) \
+            return {false, "Invalid " label ": " + name + " (max " #max_len " chars, alphanumeric/_/-, no leading -/_)", {}, {}, 0}; \
+    } while(0)
+
 QueryResult Executor::ExecuteDropTag(const DropTagStmt& stmt) {
     if (!engine_) return {false, "Engine not available"};
     engine_->DropTag(current_db_, stmt.table_name, stmt.tag_name);
@@ -546,8 +589,8 @@ QueryResult Executor::ExecuteDropDatabase(const DropDatabaseStmt& stmt) {
 
 QueryResult Executor::ExecuteCreateDatabase(const CreateDatabaseStmt& stmt) {
     if (!engine_) return {false, "Engine not available"};
-    auto db = stmt.db_name;
-    if (db.empty()) return {false, "Database name required"};
+    const auto& db = stmt.db_name;
+    RETURN_IF_INVALID(db, 64, "database name");
     os::fs::CreateDirectories(engine_->GetTagPath(db, "", ""));
     return {true, "", {}, {}, 1};
 }
@@ -559,7 +602,8 @@ QueryResult Executor::ExecuteUse(const UseStmt& stmt) {
 
 QueryResult Executor::ExecuteCreateTable(const CreateTableStmt& stmt) {
     if (!engine_) return {false, "Engine not available"};
-    auto path = engine_->GetTagPath(current_db_, stmt.table_name, "");
+    RETURN_IF_INVALID(stmt.table_name, 64, "table name");
+    auto path = engine_->GetTablePath(current_db_, stmt.table_name);
     os::fs::CreateDirectories(path);
     return {true, "", {}, {}, 1};
 }
@@ -567,6 +611,7 @@ QueryResult Executor::ExecuteCreateTable(const CreateTableStmt& stmt) {
 QueryResult Executor::ExecuteCreateTags(const CreateTagsStmt& stmt) {
     if (!engine_) return {false, "Engine not available"};
     for (const auto& tag_def : stmt.tags) {
+        RETURN_IF_INVALID(tag_def.name, 128, "tag name");
         auto path = engine_->GetTagPath(current_db_, stmt.table_name, tag_def.name);
         os::fs::CreateDirectories(path);
     }
@@ -574,6 +619,10 @@ QueryResult Executor::ExecuteCreateTags(const CreateTagsStmt& stmt) {
 }
 
 QueryResult Executor::ExecuteAlterTag(const AlterTagStmt& stmt) {
+    // 禁止修改 type 属性（会导致已存储数据被错误解释）
+    if (stmt.property == "type") {
+        return {false, "Cannot alter tag type. Data type is immutable after creation.", {}, {}, 0};
+    }
     return {true, "", {"message"}, {std::vector<std::string>{"OK"}}, 1};
 }
 
@@ -633,11 +682,31 @@ QueryResult Executor::ExecuteShow(const ShowStmt& stmt) {
         case ShowStmt::Type::TABLES: {
             QueryResult res;
             res.column_names = {"Table"};
+            // 扫描 data/hot/<db>/tables/
+            std::string db = stmt.filter_db.empty() ? current_db_ : stmt.filter_db;
+            std::string tables_dir = engine_->GetTablePath(db, "");
+            // GetTablePath("x", "") returns "hot/x/tables/", strip trailing ""
+            tables_dir = tables_dir.substr(0, tables_dir.rfind('/'));
+            std::vector<os::fs::DirEntry> entries;
+            if (os::fs::ListDirectory(tables_dir, entries)) {
+                for (auto& e : entries) {
+                    if (e.is_directory)
+                        res.rows.push_back({e.name});
+                }
+            }
             return res;
         }
         case ShowStmt::Type::TAGS: {
             QueryResult res;
             res.column_names = {"Tag"};
+            std::string table = stmt.filter_table.empty() ? "" : stmt.filter_table;
+            std::string tag_dir = engine_->GetTagPath(current_db_, table, "");
+            std::vector<os::fs::DirEntry> entries;
+            if (os::fs::ListDirectory(tag_dir, entries)) {
+                for (auto& e : entries) {
+                    if (e.is_directory) res.rows.push_back({e.name});
+                }
+            }
             return res;
         }
         case ShowStmt::Type::USERS: {

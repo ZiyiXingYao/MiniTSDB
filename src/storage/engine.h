@@ -76,16 +76,17 @@ public:
     std::string GetTagPath(const std::string& db, const std::string& table,
                            const std::string& tag) const;
 
+    // 检查表/测点是否存在
+    bool TableExists(const std::string& db, const std::string& table) const;
+    bool TagExists(const std::string& db, const std::string& table,
+                   const std::string& tag) const;
+
     // 删除整表（级联删除所有测点数据）
     bool DropTable(const std::string& db, const std::string& table);
 
     // 删除单个测点
     bool DropTag(const std::string& db, const std::string& table,
                  const std::string& tag);
-
-    // 检查测点是否存在
-    bool TagExists(const std::string& db, const std::string& table,
-                   const std::string& tag) const;
 
     // 关闭
     void Close();
