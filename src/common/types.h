@@ -80,7 +80,8 @@ enum class AggType : uint8_t {
     SUM = 4,
     COUNT = 5,
     FIRST = 6,
-    LAST = 7
+    LAST = 7,
+    STDDEV = 8
 };
 
 } // namespace minitsdb

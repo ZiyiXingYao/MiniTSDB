@@ -32,16 +32,24 @@ public:
     // 初始化（创建目录、加载元数据、恢复 WAL）
     bool Init();
 
-    // 写入数据点
+    // 写入数据点（旧 API：扁平 tag）
     bool Write(const std::string& tag, const DataPoint& point);
+    // 写入数据点（新 API：三级命名，调用旧 API 用复合 key）
+    bool Write(const std::string& db, const std::string& table,
+               const std::string& tag, const DataPoint& point);
     bool WriteBatch(const std::vector<DataBatch>& batches);
 
     // 注册测点元数据
     bool RegisterTag(const TagMeta& meta);
     TagMeta GetTagMeta(const std::string& tag_name);
 
-    // 读取原始数据
+    // 读取原始数据（旧 API）
     std::vector<DataPoint> ReadRaw(const std::string& tag,
+                                   const TimeRange& range);
+    // 读取原始数据（新 API：三级命名）
+    std::vector<DataPoint> ReadRaw(const std::string& db,
+                                   const std::string& table,
+                                   const std::string& tag,
                                    const TimeRange& range);
 
     // 读取聚合数据
@@ -52,14 +60,30 @@ public:
         double min = 0;
         double sum = 0;
         int64_t count = 0;
+        Timestamp first_ts = 0;   // FIRST 的值时间戳
+        double first_val = 0;     // FIRST 的值
+        Timestamp last_ts = 0;    // LAST 的值时间戳
+        double last_val = 0;      // LAST 的值
+        double sum_sq = 0;        // 平方和（用于 STDDEV）
     };
+    // 读取聚合数据（旧 API）
     std::vector<AggResult> ReadAggregated(const std::string& tag,
                                           const TimeRange& range,
                                           int64_t bucket_ms,
                                           AggType agg_type);
+    // 读取聚合数据（新 API）
+    std::vector<AggResult> ReadAggregated(const std::string& db,
+                                          const std::string& table,
+                                          const std::string& tag,
+                                          const TimeRange& range,
+                                          int64_t bucket_ms,
+                                          AggType agg_type);
 
-    // 查询最新值
+    // 查询最新值（旧 API）
     DataPoint ReadLatest(const std::string& tag);
+    // 查询最新值（新 API）
+    DataPoint ReadLatest(const std::string& db, const std::string& table,
+                         const std::string& tag);
 
     // 刷新内存到磁盘
     void Flush();

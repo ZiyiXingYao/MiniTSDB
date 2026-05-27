@@ -265,7 +265,8 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
         }
 
         // 检查聚合函数
-        for (const auto& agg_name : {"AVG", "MAX", "MIN", "SUM", "COUNT"}) {
+        for (const auto& agg_name : {"AVG", "MAX", "MIN", "SUM", "COUNT",
+                                       "FIRST", "LAST", "STDDEV"}) {
             if (FindKeyword(col, agg_name) != std::string::npos) {
                 expr.is_aggregate = true;
                 expr.expr = col;
@@ -274,6 +275,9 @@ ParseResult SQLParser::ParseSelect(const std::string& sql) {
                 else if (std::strcmp(agg_name, "MIN") == 0) expr.agg_type = AggType::MIN;
                 else if (std::strcmp(agg_name, "SUM") == 0) expr.agg_type = AggType::SUM;
                 else if (std::strcmp(agg_name, "COUNT") == 0) expr.agg_type = AggType::COUNT;
+                else if (std::strcmp(agg_name, "FIRST") == 0) expr.agg_type = AggType::FIRST;
+                else if (std::strcmp(agg_name, "LAST") == 0) expr.agg_type = AggType::LAST;
+                else if (std::strcmp(agg_name, "STDDEV") == 0) expr.agg_type = AggType::STDDEV;
                 break;
             }
         }

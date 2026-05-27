@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <ctime>
 #include <cctype>
+#include <cmath>
 
 namespace minitsdb {
 
@@ -114,6 +115,12 @@ QueryResult Executor::ExecuteInsert(const InsertStmt& stmt) {
             if (col == "tag") {
                 tag = val;
                 has_tag = true;
+                // 严格预注册：检查测点是否存在
+                if (engine_ && !engine_->TagExists(current_db_, stmt.table_name, tag)) {
+                    return {false, "Tag not found: " + tag +
+                            " in table " + stmt.table_name +
+                            ". Use CREATE TAGS first.", {}, {}, 0};
+                }
             } else if (col == "value") {
                 try {
                     point.value = std::stod(val);
@@ -301,6 +308,16 @@ QueryResult Executor::ExecuteSelectAggregate(const SelectStmt& stmt) {
             case AggType::MIN:   row.push_back(std::to_string(ar.min)); break;
             case AggType::SUM:   row.push_back(std::to_string(ar.sum)); break;
             case AggType::COUNT: row.push_back(std::to_string(ar.count)); break;
+            case AggType::FIRST: row.push_back(std::to_string(ar.first_val)); break;
+            case AggType::LAST:  row.push_back(std::to_string(ar.last_val)); break;
+            case AggType::STDDEV:
+                if (ar.count > 1) {
+                    double variance = (ar.sum_sq - ar.sum * ar.sum / ar.count) / ar.count;
+                    row.push_back(std::to_string(std::sqrt(variance > 0 ? variance : 0)));
+                } else {
+                    row.push_back("0");
+                }
+                break;
             default:             row.push_back(std::to_string(ar.avg)); break;
         }
         result.rows.push_back(std::move(row));

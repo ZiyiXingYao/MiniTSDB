@@ -154,6 +154,12 @@ bool StorageEngine::Write(const std::string& tag, const DataPoint& point) {
     return true;
 }
 
+// 新 API 重载：三级命名 → 扁平 key
+bool StorageEngine::Write(const std::string& db, const std::string& table,
+                           const std::string& tag, const DataPoint& point) {
+    return Write(db + ":" + table + ":" + tag, point);
+}
+
 bool StorageEngine::WriteBatch(const std::vector<DataBatch>& batches) {
     if (!initialized_) return false;
 
@@ -244,9 +250,16 @@ std::vector<StorageEngine::AggResult> StorageEngine::ReadAggregated(
         int64_t bucket_ts = (p.ts / bucket_ms) * bucket_ms;
 
         auto& b = buckets[bucket_ts];
-        b.bucket_ts = bucket_ts;
+        if (b.count == 0) {
+            b.bucket_ts = bucket_ts;
+            b.first_ts = p.ts;
+            b.first_val = val;
+        }
         b.count++;
         b.sum += val;
+        b.sum_sq += val * val;
+        b.last_ts = p.ts;
+        b.last_val = val;
         if (b.count == 1 || val > b.max) b.max = val;
         if (b.count == 1 || val < b.min) b.min = val;
     }
@@ -365,6 +378,28 @@ bool StorageEngine::DropTag(const std::string& db,
         LOG_INFO("Dropped tag: {}/{}/{} (cold)", db, table, tag);
     }
     return true;
+}
+
+// ── 新 API 重载（三级命名 → 扁平 key） ──
+
+std::vector<DataPoint> StorageEngine::ReadRaw(const std::string& db,
+                                                const std::string& table,
+                                                const std::string& tag,
+                                                const TimeRange& range) {
+    return ReadRaw(db + ":" + table + ":" + tag, range);
+}
+
+DataPoint StorageEngine::ReadLatest(const std::string& db,
+                                     const std::string& table,
+                                     const std::string& tag) {
+    return ReadLatest(db + ":" + table + ":" + tag);
+}
+
+std::vector<StorageEngine::AggResult> StorageEngine::ReadAggregated(
+    const std::string& db, const std::string& table,
+    const std::string& tag, const TimeRange& range,
+    int64_t bucket_ms, AggType agg_type) {
+    return ReadAggregated(db + ":" + table + ":" + tag, range, bucket_ms, agg_type);
 }
 
 } // namespace minitsdb
