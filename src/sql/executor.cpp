@@ -682,11 +682,11 @@ QueryResult Executor::ExecuteShow(const ShowStmt& stmt) {
         case ShowStmt::Type::TABLES: {
             QueryResult res;
             res.column_names = {"Table"};
-            // 扫描 data/hot/<db>/tables/
             std::string db = stmt.filter_db.empty() ? current_db_ : stmt.filter_db;
             std::string tables_dir = engine_->GetTablePath(db, "");
-            // GetTablePath("x", "") returns "hot/x/tables/", strip trailing ""
-            tables_dir = tables_dir.substr(0, tables_dir.rfind('/'));
+            // Remove trailing empty table: "hot/db/tables/" → "hot/db/tables"
+            if (!tables_dir.empty() && tables_dir.back() == '/')
+                tables_dir.pop_back();
             std::vector<os::fs::DirEntry> entries;
             if (os::fs::ListDirectory(tables_dir, entries)) {
                 for (auto& e : entries) {
@@ -699,7 +699,10 @@ QueryResult Executor::ExecuteShow(const ShowStmt& stmt) {
         case ShowStmt::Type::TAGS: {
             QueryResult res;
             res.column_names = {"Tag"};
-            std::string table = stmt.filter_table.empty() ? "" : stmt.filter_table;
+            std::string table = stmt.filter_table;
+            if (table.empty()) {
+                return {false, "SHOW TAGS requires FROM <table>", {}, {}, 0};
+            }
             std::string tag_dir = engine_->GetTagPath(current_db_, table, "");
             std::vector<os::fs::DirEntry> entries;
             if (os::fs::ListDirectory(tag_dir, entries)) {
